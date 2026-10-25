@@ -31,6 +31,11 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
 - **Import** (`data/LiveRepository.kt`): OkHttp stream → `M3uParser.entries()` (lazy `Sequence`) → batches of 500 rows
   under a new `generation` → one short transaction swaps generations. Old data stays if an import fails.
   Queries only read rows where `channel.generation == source.generation`.
+- **Xtream** (`data/xtream/`): login = server + username + password, stored on `SourceEntity` (type `XTREAM`).
+  Import uses `player_api.php` (account check, `get_live_categories`, `get_live_streams`, streamed with
+  `android.util.JsonReader`) and builds `/live/<user>/<pass>/<id>.m3u8` (or `.ts` if HLS isn't allowed).
+  A pasted `get.php?username=…&password=…` link is stored as Xtream automatically: the owner's provider
+  blocks `get.php` (answers HTTP 884) but allows the API, which also gives proper groups.
 - M3U entries whose URL contains `/movie/` or `/series/` are skipped (VOD comes via Xtream in Phase 5).
 - **Stable keys** (`data/m3u/StableKeys.kt`): `tvg:<id>`, else a hash of name + URL with credentials stripped.
   Duplicates get `|name`, then `#n`. Phase 2 user state must key on `(sourceId, stableKey)`, **not** row ids:
@@ -55,7 +60,8 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
 
 - Not verified on device yet (Phase 1): Back priority between `BackHandler` in the player and NavDisplay;
   focus return to the last channel after leaving the player.
-- `type=m3u` Xtream URLs have no group/logo attributes. Use `type=m3u_plus`.
+- `type=m3u` Xtream URLs have no group/logo attributes. Moot for `get.php` links now: they go through the Xtream API.
+- Xtream JSON parsing has no unit tests (android.util.JsonReader is a stub on the JVM); it is checked on the TV.
 - tv-material Card/Surface scale animation timing isn't configurable. Revisit in Phase 4.
 - Placeholder banner/icon. No channel logos until Phase 4 (monograms only).
 

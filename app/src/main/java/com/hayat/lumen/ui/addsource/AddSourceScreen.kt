@@ -3,6 +3,7 @@ package com.hayat.lumen.ui.addsource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -30,6 +31,7 @@ import androidx.tv.material3.Text
 import com.hayat.lumen.LocalAppContainer
 import com.hayat.lumen.data.ImportException
 import com.hayat.lumen.data.LiveRepository
+import com.hayat.lumen.data.xtream.XtreamLogin
 import com.hayat.lumen.ui.components.LumenButton
 import com.hayat.lumen.ui.components.LumenTextField
 import com.hayat.lumen.ui.theme.LumenColors
@@ -53,15 +55,28 @@ class AddSourceViewModel(private val repo: LiveRepository) : ViewModel() {
     val state: StateFlow<AddState> = _state
 
     fun add(name: String, url: String, onAdded: () -> Unit) {
-        if (_state.value is AddState.Importing) return
         if (url.isBlank()) {
             _state.value = AddState.Failed("Paste a playlist URL first.")
             return
         }
+        import(onAdded) { progress -> repo.addM3u(name.ifBlank { DEFAULT_NAME }, url, progress) }
+    }
+
+    fun addXtream(name: String, server: String, username: String, password: String, onAdded: () -> Unit) {
+        val login = XtreamLogin.of(server, username, password)
+        if (login == null) {
+            _state.value = AddState.Failed("Enter the server address, username and password.")
+            return
+        }
+        import(onAdded) { progress -> repo.addXtream(name.ifBlank { DEFAULT_NAME }, login, progress) }
+    }
+
+    private fun import(onAdded: () -> Unit, work: suspend (onProgress: (Int) -> Unit) -> Unit) {
+        if (_state.value is AddState.Importing) return
         viewModelScope.launch {
             _state.value = AddState.Importing(0)
             try {
-                repo.addM3u(name.ifBlank { DEFAULT_NAME }, url) { _state.value = AddState.Importing(it) }
+                work { _state.value = AddState.Importing(it) }
                 _state.value = AddState.Idle
                 onAdded()
             } catch (e: CancellationException) {
@@ -88,7 +103,11 @@ fun AddSourceScreen(onAdded: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
 
     var name by remember { mutableStateOf(AddSourceViewModel.DEFAULT_NAME) }
+    var xtreamMode by remember { mutableStateOf(false) }
     var url by remember { mutableStateOf("") }
+    var server by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
     val urlFocus = remember { FocusRequester() }
     val importing = state is AddState.Importing
 
@@ -104,25 +123,49 @@ fun AddSourceScreen(onAdded: () -> Unit) {
                 Text("Add a playlist", style = MaterialTheme.typography.displaySmall, color = LumenColors.TextPrimary)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Paste your M3U playlist URL. The Google TV app on your phone has a keyboard that makes this easier.",
+                    if (xtreamMode) "Enter the server, username and password from your provider."
+                    else "Paste your M3U or Xtream (get.php) link. The Google TV app on your phone has a keyboard that makes this easier.",
                     style = MaterialTheme.typography.bodyLarge,
                     color = LumenColors.TextSecondary,
                 )
             }
-            LumenTextField(
-                value = url,
-                onValueChange = { url = it },
-                label = "Playlist URL",
-                placeholder = "http://…",
-                keyboardType = KeyboardType.Uri,
-                modifier = Modifier.focusRequester(urlFocus),
-            )
+            if (xtreamMode) {
+                LumenTextField(
+                    value = server,
+                    onValueChange = { server = it },
+                    label = "Server",
+                    placeholder = "http://example.com:8080",
+                    keyboardType = KeyboardType.Uri,
+                    modifier = Modifier.focusRequester(urlFocus),
+                )
+                LumenTextField(value = username, onValueChange = { username = it }, label = "Username")
+                LumenTextField(value = password, onValueChange = { password = it }, label = "Password", keyboardType = KeyboardType.Password)
+            } else {
+                LumenTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    label = "Playlist URL",
+                    placeholder = "http://…",
+                    keyboardType = KeyboardType.Uri,
+                    modifier = Modifier.focusRequester(urlFocus),
+                )
+            }
             LumenTextField(value = name, onValueChange = { name = it }, label = "Name")
-            LumenButton(
-                text = if (importing) "Importing…" else "Add playlist",
-                onClick = { vm.add(name, url, onAdded) },
-                enabled = !importing,
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                LumenButton(
+                    text = if (importing) "Importing…" else "Add playlist",
+                    onClick = {
+                        if (xtreamMode) vm.addXtream(name, server, username, password, onAdded)
+                        else vm.add(name, url, onAdded)
+                    },
+                    enabled = !importing,
+                )
+                LumenButton(
+                    text = if (xtreamMode) "Use a playlist link" else "Use Xtream login",
+                    onClick = { xtreamMode = !xtreamMode },
+                    enabled = !importing,
+                )
+            }
             Text(
                 text = when (val s = state) {
                     AddState.Idle -> ""
