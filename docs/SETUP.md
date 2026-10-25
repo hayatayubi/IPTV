@@ -62,6 +62,15 @@ Use this if Developer options has a **Wireless debugging** entry, or if Option A
    adb connect 192.168.1.42:41234   # the port from the main Wireless debugging screen
    ```
 
+### If adb says "more than one device/emulator"
+
+`adb` still remembers an old connection. Clear the list with `adb disconnect`. Or name the TV in every command
+with `-s IP:PORT`, using your real numbers:
+
+```sh
+adb -s 192.168.4.72:37867 install -r ~/Downloads/app-debug.apk
+```
+
 ### Check it worked
 
 ```sh

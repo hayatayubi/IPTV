@@ -6,12 +6,14 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
 
 ## Current phase
 
-**Phase 0: Setup.** Done in code. Waiting on a real-TV check: install, D-pad focus, OK / long-press, focus restore between rows.
+**Phase 0: Setup.** Done, verified on the TV 2026-10-25 (install, D-pad focus, OK / long-press, focus restore, Back).
+Next: **Phase 1, Live basics.**
 
 ## Decisions
 
 - App name **Lumen**, package `com.hayat.lumen` (placeholders, rename freely before Phase 1).
-- Device: Chromecast with Google TV **4K** (~2 GB RAM). Sources: **M3U + Xtream**. EPG: **separate XMLTV URL**.
+- Device: Chromecast with Google TV **4K** (~2 GB RAM), at `192.168.4.72`. Connects via **Wireless debugging**
+  (already paired with the laptop; the connect port changes after a reboot, so read it from the TV). Sources: **M3U + Xtream**. EPG: **separate XMLTV URL**.
 - Accent **#0A84FF** (tvOS blue). Dark only. Font: Inter (bundled in `res/font`, OFL, license in `third_party/inter`).
 - Versions (checked 2026-10-25, latest stable): AGP 9.4.1, Gradle 9.8.2, Kotlin 2.4.21, Compose BOM 2026.09.00,
   tv-material 1.1.0, compileSdk/targetSdk 37, minSdk 29. All in `gradle/libs.versions.toml`.
