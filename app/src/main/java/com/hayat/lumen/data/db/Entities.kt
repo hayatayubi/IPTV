@@ -1,0 +1,89 @@
+package com.hayat.lumen.data.db
+
+import androidx.room.Entity
+import androidx.room.Index
+import androidx.room.PrimaryKey
+
+enum class SourceType { M3U, XTREAM }
+
+/**
+ * A playlist the user added. Credentials live only here, on-device.
+ *
+ * [generation] is bumped on every successful refresh. Channels and groups are
+ * written under the new generation, then the old one is deleted in one short
+ * transaction, so the UI never sees a half-imported playlist.
+ */
+@Entity(tableName = "sources")
+data class SourceEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val type: SourceType,
+    val name: String,
+    val url: String,
+    val username: String? = null,
+    val password: String? = null,
+    val epgUrl: String? = null,
+    val lastRefreshed: Long? = null,
+    val generation: Int = 0,
+)
+
+/** Playlist data only. User state (order, favourites, hidden) arrives in Phase 2, keyed on name/stableKey. */
+@Entity(
+    tableName = "channel_groups",
+    indices = [Index(value = ["sourceId", "generation", "playlistOrder"])],
+)
+data class ChannelGroupEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val sourceId: Long,
+    val generation: Int,
+    val name: String,
+    val playlistOrder: Int,
+    val channelCount: Int,
+)
+
+@Entity(
+    tableName = "channels",
+    indices = [
+        Index(value = ["sourceId", "generation", "groupName", "playlistOrder"]),
+        Index(value = ["sourceId", "stableKey"]),
+    ],
+)
+data class ChannelEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val sourceId: Long,
+    val generation: Int,
+    val stableKey: String,
+    val name: String,
+    val streamUrl: String,
+    val logoUrl: String?,
+    val groupName: String,
+    val tvgId: String?,
+    val number: Int?,
+    val playlistOrder: Int,
+)
+
+/** Projection for the Live groups column. */
+data class GroupRow(
+    val sourceId: Long,
+    val sourceName: String,
+    val name: String,
+    val channelCount: Int,
+)
+
+/** Projection for channel lists: no stream URL, so 10k rows stay small. */
+data class ChannelRow(
+    val id: Long,
+    val name: String,
+    val number: Int?,
+    val logoUrl: String?,
+    val playlistOrder: Int,
+)
+
+/** What the player needs to zap through a group. */
+data class PlayableChannel(
+    val id: Long,
+    val name: String,
+    val number: Int?,
+    val streamUrl: String,
+    val groupName: String,
+    val playlistOrder: Int,
+)

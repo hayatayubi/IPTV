@@ -6,41 +6,68 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
 
 ## Current phase
 
-**Phase 0: Setup.** Done, verified on the TV 2026-10-25 (install, D-pad focus, OK / long-press, focus restore, Back).
-Next: **Phase 1, Live basics.**
+- **Phase 0: Setup.** Done, verified on the TV 2026-10-25.
+- **Phase 1: Live basics.** Built (branch `phase-1-live`). Waiting on a real-TV check with the owner's M3U.
+  - Add M3U source → Live (groups | channels) → full-screen player, Up/Down zapping, OK info overlay.
+  - Not in Phase 1: Left sidebar and Right mini guide in the player (Phases 3/6), logos (Phase 4), settings/source editing (Phase 6).
 
 ## Decisions
 
-- App name **Lumen**, package `com.hayat.lumen` (placeholders, rename freely before Phase 1).
+- App name **Lumen**, package `com.hayat.lumen`.
 - Device: Chromecast with Google TV **4K** (~2 GB RAM), at `192.168.4.72`. Connects via **Wireless debugging**
-  (already paired with the laptop; the connect port changes after a reboot, so read it from the TV). Sources: **M3U + Xtream**. EPG: **separate XMLTV URL**.
+  (already paired with the laptop; the connect port changes after a reboot, so read it from the TV).
+  Sources: **M3U + Xtream**. EPG: **separate XMLTV URL**.
 - Accent **#0A84FF** (tvOS blue). Dark only. Font: Inter (bundled in `res/font`, OFL, license in `third_party/inter`).
-- Versions (checked 2026-10-25, latest stable): AGP 9.4.1, Gradle 9.8.2, Kotlin 2.4.21, Compose BOM 2026.09.00,
-  tv-material 1.1.0, compileSdk/targetSdk 37, minSdk 29. All in `gradle/libs.versions.toml`.
-- AGP 9 "built-in Kotlin": no `org.jetbrains.kotlin.android` plugin.
-- Use standard `LazyRow`/`LazyColumn`/`LazyVerticalGrid`, not tv-foundation lazy layouts (deprecated).
-- **Shared debug keystore in `keystore/`**, used for debug and (for now) release, so APKs built in cloud sessions
-  and on the laptop can be installed over each other without wiping data.
+- Versions (checked 2026-10-25, latest stable) are all in `gradle/libs.versions.toml`.
+- AGP 9 "built-in Kotlin": no `org.jetbrains.kotlin.android` plugin. KSP 2.3.x runs Room's compiler.
+- **DI: by hand.** `AppContainer` (on `LumenApp`) builds OkHttp, Room DB, repositories, `PlayerHolder`;
+  composables get it via `LocalAppContainer`; ViewModels via `viewModel { Foo(container.x) }`.
+- **Navigation 3**: the back stack is a `mutableStateListOf<Route>` in `ui/LumenRoot.kt`. Back pops; Back at root exits.
+- **Room 2.8** (not Room 3, which is new; migration later is mostly renames). Schemas exported to `app/schemas`.
+  **No destructive migration fallback**: every schema change needs a migration (prefer auto-migrations), so
+  favourites etc. are never wiped.
+- **Paging 3 deferred.** Lists are plain Room `Flow<List<…>>` of slim projections (`ChannelRow` has no URL).
+  A 10k-channel group is ~2 MB. Revisit if a real playlist feels slow.
+- **Import** (`data/LiveRepository.kt`): OkHttp stream → `M3uParser.entries()` (lazy `Sequence`) → batches of 500 rows
+  under a new `generation` → one short transaction swaps generations. Old data stays if an import fails.
+  Queries only read rows where `channel.generation == source.generation`.
+- M3U entries whose URL contains `/movie/` or `/series/` are skipped (VOD comes via Xtream in Phase 5).
+- **Stable keys** (`data/m3u/StableKeys.kt`): `tvg:<id>`, else a hash of name + URL with credentials stripped.
+  Duplicates get `|name`, then `#n`. Phase 2 user state must key on `(sourceId, stableKey)`, **not** row ids:
+  channel ids change on every refresh.
+- Credentials: `util/UrlRedaction.kt`. Error messages show `hostOnly(url)`; never log raw URLs.
+- Cleartext http allowed app-wide (`res/xml/network_security_config.xml`): IPTV is mostly http.
+- **Player** (`playback/PlayerHolder.kt`): one ExoPlayer, created lazily, released in `MainActivity.onStop`.
+  Starts after 1 s of buffer. OkHttp data source (follows http→https redirects).
+  Zapping is debounced 350 ms, and the old stream is stopped at once (providers often allow 1 connection).
+  Up = previous in list, Down = next; CH+/CH- keys = next/previous.
+- Shared debug keystore in `keystore/`, used for debug and release, so cloud and laptop builds install over each other.
 - Backups disabled (`allowBackup=false` + `data_extraction_rules.xml`): credentials stay on the device.
-- One focus component, `ui/components/LumenCard.kt` (tv-material `Card`: scale 1.06, accent glow, dims when unfocused).
-  Motion: `LumenMotion.focus()` = 180 ms ease-out. Safe area: `SafeArea` (48 dp × 27 dp).
-
-## Open decisions
-
-- DI: Hilt vs manual constructor injection (`AppContainer`). Decide before Phase 1.
+- UI components (`ui/components`):
+  - `LumenListItem`: focused row turns light with dark text.
+  - `LumenButton`.
+  - `LumenTextField`: the keyboard opens only on OK, not on focus.
+  - `Monogram`: fallback tile.
+  - `LumenCard`: poster tile for Phase 4.
+- Motion: `LumenMotion.focus()` = 180 ms ease-out. Safe area: `SafeArea` (48 dp × 27 dp).
 
 ## Known issues
 
-- tv-material Card's own scale animation timing isn't configurable; only our dimming uses `LumenMotion`. Revisit in Phase 4.
-- Placeholder banner/icon.
+- Not verified on device yet (Phase 1): Back priority between `BackHandler` in the player and NavDisplay;
+  focus return to the last channel after leaving the player.
+- `type=m3u` Xtream URLs have no group/logo attributes. Use `type=m3u_plus`.
+- tv-material Card/Surface scale animation timing isn't configurable. Revisit in Phase 4.
+- Placeholder banner/icon. No channel logos until Phase 4 (monograms only).
 
 ## Working notes
 
-- Build: `./gradlew assembleDebug` · Lint: `./gradlew lintDebug` · Install: `./gradlew installDebug` (see `docs/SETUP.md`).
+- Build: `./gradlew assembleDebug` · Tests: `./gradlew testDebugUnitTest` · Lint: `./gradlew lintDebug`.
 - **Judge smoothness only on release builds.** Debug Compose builds are visibly janky on the Chromecast; release
   (`./gradlew assembleRelease`, R8 + same shared key, installs over debug) was confirmed smooth on the TV.
   After sideloading, `adb shell cmd package compile -f -m speed-profile com.hayat.lumen` applies the baseline profile right away.
+- Typing a URL on the TV: open the field with OK, then `adb shell "input text 'http://…'"` from the laptop
+  (inner single quotes stop the device shell from eating `&`).
 - Cloud sessions: Maven Central rate-limits (429) the shared egress IP. Use a Gradle init script in
   `~/.gradle/init.d/` that puts `https://maven-central.storage-download.googleapis.com/maven2/` first.
   Never put it in the repo.
-- Never log URLs containing credentials.
+- Never commit or log playlist URLs or credentials (the owner's test URL included).

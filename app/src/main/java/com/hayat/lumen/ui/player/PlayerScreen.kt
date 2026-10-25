@@ -1,0 +1,239 @@
+package com.hayat.lumen.ui.player
+
+import androidx.activity.compose.BackHandler
+import androidx.annotation.OptIn
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleStartEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.compose.ContentFrame
+import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Text
+import com.hayat.lumen.LocalAppContainer
+import com.hayat.lumen.playback.PlayerHolder
+import com.hayat.lumen.ui.components.Monogram
+import com.hayat.lumen.ui.theme.LumenColors
+import com.hayat.lumen.ui.theme.LumenMotion
+import com.hayat.lumen.ui.theme.SafeArea
+import kotlinx.coroutines.delay
+
+private enum class Status { LOADING, PLAYING, FAILED }
+
+/**
+ * Full-screen live player.
+ * Up/Down: previous/next channel in the group · OK: info overlay · Back: hide overlay, then leave.
+ */
+@OptIn(UnstableApi::class)
+@Composable
+fun PlayerScreen(channelId: Long) {
+    val container = LocalAppContainer.current
+    val vm = viewModel { PlayerViewModel(container.live, container.lastChannelId, channelId) }
+    val tuned by vm.tuned.collectAsStateWithLifecycle()
+
+    var player by remember { mutableStateOf<ExoPlayer?>(null) }
+    var status by remember { mutableStateOf(Status.LOADING) }
+    var overlay by remember { mutableStateOf(true) }
+    var interaction by remember { mutableIntStateOf(0) } // bumps restart the overlay's hide timer
+    var retry by remember { mutableIntStateOf(0) }
+    val keys = remember { FocusRequester() }
+
+    fun showOverlay() {
+        overlay = true
+        interaction++
+    }
+
+    // Acquire the shared player while this screen is visible; stop it when it isn't.
+    // (MainActivity releases it fully when the app goes to the background.)
+    LifecycleStartEffect(Unit) {
+        val p = container.player.acquire()
+        player = p
+        onStopOrDispose {
+            p.stop()
+            p.clearMediaItems()
+            player = null
+        }
+    }
+
+    // Track playback state for the overlay. Recovers by itself from the common
+    // live-HLS hiccup of falling behind the live window.
+    DisposableEffect(player) {
+        val p = player ?: return@DisposableEffect onDispose { }
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_READY) status = Status.PLAYING
+                if (state == Player.STATE_BUFFERING && status != Status.FAILED) status = Status.LOADING
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
+                    p.seekToDefaultPosition()
+                    p.prepare()
+                } else {
+                    status = Status.FAILED
+                    overlay = true
+                }
+            }
+        }
+        p.addListener(listener)
+        onDispose { p.removeListener(listener) }
+    }
+
+    // Tune. Zapping quickly through channels only opens the one you stop on:
+    // many providers allow a single connection, and every open stream counts.
+    LaunchedEffect(player, tuned?.channel?.id, retry) {
+        val p = player ?: return@LaunchedEffect
+        val channel = tuned?.channel ?: return@LaunchedEffect
+        val firstTune = p.currentMediaItem == null
+        p.stop()
+        status = Status.LOADING
+        if (!firstTune) delay(ZAP_DEBOUNCE_MS)
+        p.setMediaItem(PlayerHolder.mediaItem(channel.streamUrl))
+        p.prepare()
+        p.playWhenReady = true
+    }
+
+    // Auto-hide the overlay a few seconds after the last interaction, once video is playing.
+    LaunchedEffect(overlay, interaction, status) {
+        if (overlay && status == Status.PLAYING) {
+            delay(OVERLAY_TIMEOUT_MS)
+            overlay = false
+        }
+    }
+
+    // TVs dim to a screensaver after inactivity; not while watching.
+    val view = LocalView.current
+    DisposableEffect(Unit) {
+        view.keepScreenOn = true
+        onDispose { view.keepScreenOn = false }
+    }
+
+    // Back hides the overlay first; with it hidden, Back falls through to navigation.
+    BackHandler(enabled = overlay) { overlay = false }
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .focusRequester(keys)
+            .onKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+                when (event.key) {
+                    Key.DirectionUp, Key.ChannelDown -> { vm.step(-1); showOverlay(); true }
+                    Key.DirectionDown, Key.ChannelUp -> { vm.step(+1); showOverlay(); true }
+                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                        if (event.nativeKeyEvent.repeatCount == 0) {
+                            when {
+                                status == Status.FAILED -> { retry++; showOverlay() }
+                                overlay -> overlay = false
+                                else -> showOverlay()
+                            }
+                        }
+                        true
+                    }
+                    else -> false
+                }
+            }
+            .focusable(),
+    ) {
+        player?.let { p ->
+            ContentFrame(player = p, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+        }
+
+        AnimatedVisibility(
+            visible = overlay,
+            enter = fadeIn(LumenMotion.focus()),
+            exit = fadeOut(LumenMotion.focus()),
+            modifier = Modifier.align(Alignment.BottomCenter),
+        ) {
+            tuned?.let { InfoOverlay(it, status) }
+        }
+    }
+
+    LaunchedEffect(Unit) { keys.requestFocus() }
+}
+
+@Composable
+private fun InfoOverlay(tuned: Tuned, status: Status) {
+    val channel = tuned.channel
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))))
+            .padding(horizontal = SafeArea.Horizontal, vertical = SafeArea.Vertical)
+            .padding(top = 96.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+            Monogram(channel.name, size = 72.dp)
+            Column(Modifier.weight(1f)) {
+                Text(
+                    listOfNotNull(channel.number?.toString(), channel.name).joinToString("   "),
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = LumenColors.TextPrimary,
+                    maxLines = 1,
+                )
+                Text(
+                    channel.groupName,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = LumenColors.TextSecondary,
+                    maxLines = 1,
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    when (status) {
+                        Status.LOADING -> "Loading…"
+                        Status.PLAYING -> ""
+                        Status.FAILED -> "Can't play this channel right now"
+                    },
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = LumenColors.TextPrimary,
+                )
+                Text(
+                    if (status == Status.FAILED) "Press OK to try again" else "${tuned.position} of ${tuned.total}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = LumenColors.TextTertiary,
+                )
+            }
+        }
+    }
+}
+
+private const val ZAP_DEBOUNCE_MS = 350L
+private const val OVERLAY_TIMEOUT_MS = 5_000L
