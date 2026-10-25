@@ -37,6 +37,9 @@ Next: **Phase 1, Live basics.**
 ## Working notes
 
 - Build: `./gradlew assembleDebug` · Lint: `./gradlew lintDebug` · Install: `./gradlew installDebug` (see `docs/SETUP.md`).
+- **Judge smoothness only on release builds.** Debug Compose builds are visibly janky on the Chromecast; release
+  (`./gradlew assembleRelease`, R8 + same shared key, installs over debug) was confirmed smooth on the TV.
+  After sideloading, `adb shell cmd package compile -f -m speed-profile com.hayat.lumen` applies the baseline profile right away.
 - Cloud sessions: Maven Central rate-limits (429) the shared egress IP. Use a Gradle init script in
   `~/.gradle/init.d/` that puts `https://maven-central.storage-download.googleapis.com/maven2/` first.
   Never put it in the repo.
