@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -118,7 +120,12 @@ fun AddSourceScreen(onAdded: () -> Unit) {
             .padding(horizontal = SafeArea.Horizontal, vertical = SafeArea.Vertical),
         contentAlignment = Alignment.Center,
     ) {
-        Column(Modifier.widthIn(max = 720.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        // Unlike a SwiftUI ScrollView, a Compose Column doesn't scroll unless asked. With
+        // verticalScroll, moving focus to something off-screen scrolls it into view.
+        Column(
+            Modifier.widthIn(max = 720.dp).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
             Column {
                 Text("Add a playlist", style = MaterialTheme.typography.displaySmall, color = LumenColors.TextPrimary)
                 Spacer(Modifier.height(8.dp))
@@ -130,16 +137,29 @@ fun AddSourceScreen(onAdded: () -> Unit) {
                 )
             }
             if (xtreamMode) {
-                LumenTextField(
-                    value = server,
-                    onValueChange = { server = it },
-                    label = "Server",
-                    placeholder = "http://example.com:8080",
-                    keyboardType = KeyboardType.Uri,
-                    modifier = Modifier.focusRequester(urlFocus),
-                )
-                LumenTextField(value = username, onValueChange = { username = it }, label = "Username")
-                LumenTextField(value = password, onValueChange = { password = it }, label = "Password", keyboardType = KeyboardType.Password)
+                // Four fields don't fit one per row above the buttons on a 540 dp tall TV screen,
+                // so they go two per row. `weight` splits a Row's width like flexible frames in SwiftUI.
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    LumenTextField(
+                        value = server,
+                        onValueChange = { server = it },
+                        label = "Server",
+                        placeholder = "http://example.com:8080",
+                        keyboardType = KeyboardType.Uri,
+                        modifier = Modifier.weight(1.6f).focusRequester(urlFocus),
+                    )
+                    LumenTextField(value = name, onValueChange = { name = it }, label = "Name", modifier = Modifier.weight(1f))
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    LumenTextField(value = username, onValueChange = { username = it }, label = "Username", modifier = Modifier.weight(1f))
+                    LumenTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        label = "Password",
+                        keyboardType = KeyboardType.Password,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             } else {
                 LumenTextField(
                     value = url,
@@ -149,8 +169,8 @@ fun AddSourceScreen(onAdded: () -> Unit) {
                     keyboardType = KeyboardType.Uri,
                     modifier = Modifier.focusRequester(urlFocus),
                 )
+                LumenTextField(value = name, onValueChange = { name = it }, label = "Name")
             }
-            LumenTextField(value = name, onValueChange = { name = it }, label = "Name")
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 LumenButton(
                     text = if (importing) "Importing…" else "Add playlist",
