@@ -52,7 +52,8 @@ import java.text.NumberFormat
 
 /**
  * Live: groups on the left, the selected group's channels on the right.
- * Moving focus onto a group shows its channels (no OK needed); OK on a channel plays it.
+ * Moving focus onto a group shows its channels (no OK needed); OK on a channel plays it,
+ * holding OK adds it to (or removes it from) favourites.
  */
 @Composable
 fun LiveScreen(onPlay: (channelId: Long) -> Unit, onOpenGuide: () -> Unit) {
@@ -169,6 +170,7 @@ fun LiveScreen(onPlay: (channelId: Long) -> Unit, onOpenGuide: () -> Unit) {
                             container.lastChannelId.value = channel.id
                             onPlay(channel.id)
                         },
+                        onLongClick = { vm.toggleFavourite(channel.id) },
                         modifier = (if (channel.id == returnTo) Modifier.focusRequester(channelFocus) else Modifier)
                             .onFocusChanged { if (it.isFocused) vm.focusChannel(channel.id) },
                     )
@@ -192,8 +194,15 @@ fun LiveScreen(onPlay: (channelId: Long) -> Unit, onOpenGuide: () -> Unit) {
 }
 
 @Composable
-private fun ChannelItem(channel: ChannelRow, position: Int, nowNext: NowNext?, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    LumenListItem(onClick = onClick, modifier = modifier, minHeight = 64.dp) {
+private fun ChannelItem(
+    channel: ChannelRow,
+    position: Int,
+    nowNext: NowNext?,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    LumenListItem(onClick = onClick, onLongClick = onLongClick, modifier = modifier, minHeight = 64.dp) {
         Text(
             (channel.number ?: position).toString(),
             style = MaterialTheme.typography.labelLarge,
@@ -233,6 +242,9 @@ private fun ChannelItem(channel: ChannelRow, position: Int, nowNext: NowNext?, o
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.widthIn(max = 260.dp),
             )
+        }
+        if (channel.favourite) {
+            Text("★", style = MaterialTheme.typography.titleMedium, color = LumenColors.Accent)
         }
     }
 }

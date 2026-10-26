@@ -93,6 +93,9 @@ dependencies {
     implementation(libs.androidx.media3.ui.compose)
 
     implementation(libs.okhttp)
+    // Coil loads channel logos (like Kingfisher/Nuke on iOS), over the app's OkHttp client.
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
 
     testImplementation(libs.junit)
     testImplementation(libs.kxml2)

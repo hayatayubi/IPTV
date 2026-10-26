@@ -26,7 +26,7 @@ data class SourceEntity(
     val generation: Int = 0,
 )
 
-/** Playlist data only. User state (order, favourites, hidden) arrives in Phase 2, keyed on name/stableKey. */
+/** Playlist data only. User state (favourites, later order/hidden) lives in its own tables, keyed on stableKey. */
 @Entity(
     tableName = "channel_groups",
     indices = [Index(value = ["sourceId", "generation", "playlistOrder"])],
@@ -61,6 +61,19 @@ data class ChannelEntity(
     val playlistOrder: Int,
 )
 
+/**
+ * A favourite channel. Keyed on (sourceId, stableKey), not the channel row id, because
+ * row ids change on every refresh while stable keys survive it.
+ * [position] orders the Home row: new favourites go to the end.
+ */
+@Entity(tableName = "favourites", primaryKeys = ["sourceId", "stableKey"])
+data class FavouriteEntity(
+    val sourceId: Long,
+    val stableKey: String,
+    val position: Int,
+    val addedAt: Long,
+)
+
 /** Projection for the Live groups column. */
 data class GroupRow(
     val sourceId: Long,
@@ -76,6 +89,17 @@ data class ChannelRow(
     val number: Int?,
     val logoUrl: String?,
     val playlistOrder: Int,
+    val favourite: Boolean,
+)
+
+/** Projection for the Home favourites row. */
+data class FavouriteRow(
+    val id: Long,
+    val sourceId: Long,
+    val stableKey: String,
+    val name: String,
+    val number: Int?,
+    val logoUrl: String?,
 )
 
 /** What the player needs to zap through a group. */

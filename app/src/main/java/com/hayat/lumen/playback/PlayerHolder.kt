@@ -15,8 +15,11 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import okhttp3.OkHttpClient
 
 /**
- * Owns the app's single ExoPlayer. Screens [acquire] it; MainActivity calls
- * [release] when the app goes to the background, freeing decoders and memory.
+ * Owns the app's single ExoPlayer. Screens [acquire] it and [stop] it when they leave;
+ * MainActivity calls [release] when the app goes to the background, freeing decoders and memory.
+ *
+ * Two screens can briefly hold it at once (Home's preview and the player, during the
+ * screen fade), so [stop] only acts if the caller is still the latest to acquire it.
  */
 @OptIn(UnstableApi::class)
 class PlayerHolder(
@@ -24,12 +27,27 @@ class PlayerHolder(
     private val http: OkHttpClient,
 ) {
     private var player: ExoPlayer? = null
+    private var owner: Any? = null
 
-    fun acquire(): ExoPlayer = player ?: build().also { player = it }
+    fun acquire(owner: Any): ExoPlayer {
+        this.owner = owner
+        return player ?: build().also { player = it }
+    }
+
+    /** Stops and clears playback, unless another screen has acquired the player since. */
+    fun stop(owner: Any) {
+        if (this.owner !== owner) return
+        player?.run {
+            stop()
+            clearMediaItems()
+        }
+        this.owner = null
+    }
 
     fun release() {
         player?.release()
         player = null
+        owner = null
     }
 
     private fun build(): ExoPlayer {

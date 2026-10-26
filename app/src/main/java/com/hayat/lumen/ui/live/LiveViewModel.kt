@@ -77,6 +77,10 @@ class LiveViewModel(private val repo: LiveRepository, private val epg: EpgReposi
         picked.value = GroupKey(group.sourceId, group.name)
     }
 
+    fun toggleFavourite(channelId: Long) {
+        viewModelScope.launch { repo.toggleFavourite(channelId) }
+    }
+
     fun refreshAll() {
         if (_refresh.value is RefreshState.Running) return
         viewModelScope.launch {

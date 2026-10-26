@@ -20,6 +20,7 @@ import androidx.navigation3.ui.NavDisplay
 import com.hayat.lumen.LocalAppContainer
 import com.hayat.lumen.ui.addsource.AddSourceScreen
 import com.hayat.lumen.ui.guide.GuideSettingsScreen
+import com.hayat.lumen.ui.home.HomeScreen
 import com.hayat.lumen.ui.live.LiveScreen
 import com.hayat.lumen.ui.player.PlayerScreen
 import com.hayat.lumen.ui.theme.LumenColors
@@ -28,8 +29,10 @@ import com.hayat.lumen.ui.theme.LumenMotion
 /** Navigation destinations. The back stack is just a list of these. */
 sealed interface Route
 data object AddSourceRoute : Route
+data object HomeRoute : Route
 data object LiveRoute : Route
-data class PlayerRoute(val channelId: Long) : Route
+/** [inFavourites]: Up/Down zaps through favourites instead of the channel's group. */
+data class PlayerRoute(val channelId: Long, val inFavourites: Boolean = false) : Route
 data object GuideSettingsRoute : Route
 
 /**
@@ -40,9 +43,9 @@ data object GuideSettingsRoute : Route
 fun LumenRoot(onExit: () -> Unit) {
     val container = LocalAppContainer.current
 
-    // First launch (no playlists yet) opens on "Add a playlist", otherwise on Live.
+    // First launch (no playlists yet) opens on "Add a playlist", otherwise on Home (favourites).
     val start by produceState<Route?>(initialValue = null) {
-        value = if (container.live.hasSources()) LiveRoute else AddSourceRoute
+        value = if (container.live.hasSources()) HomeRoute else AddSourceRoute
     }
     val first = start
     if (first == null) {
@@ -70,10 +73,18 @@ fun LumenRoot(onExit: () -> Unit) {
             entry<AddSourceRoute> {
                 AddSourceScreen(onAdded = {
                     container.epg.updateStaleInBackground() // load the new playlist's guide
-                    // Replace "Add" with Live, so Back from Live exits rather than returning here.
+                    // Replace "Add" with Home, then open Live on top: there are no favourites yet.
+                    // Back from Live goes to Home; Back from Home exits.
+                    backStack.add(HomeRoute)
+                    backStack.removeAll { it != HomeRoute }
                     backStack.add(LiveRoute)
-                    backStack.removeAll { it != LiveRoute }
                 })
+            }
+            entry<HomeRoute> {
+                HomeScreen(
+                    onPlay = { backStack.add(PlayerRoute(it, inFavourites = true)) },
+                    onBrowse = { backStack.add(LiveRoute) },
+                )
             }
             entry<LiveRoute> {
                 LiveScreen(
@@ -82,7 +93,7 @@ fun LumenRoot(onExit: () -> Unit) {
                 )
             }
             entry<PlayerRoute> { route ->
-                PlayerScreen(channelId = route.channelId)
+                PlayerScreen(channelId = route.channelId, inFavourites = route.inFavourites)
             }
             entry<GuideSettingsRoute> {
                 GuideSettingsScreen()

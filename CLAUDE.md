@@ -9,6 +9,10 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
 - **Phase 0: Setup.** Done, verified on the TV 2026-10-25.
 - **Phase 1: Live basics.** Built (branch `phase-1-live`). Waiting on a real-TV check with the owner's M3U.
   - Add M3U source → Live (groups | channels) → full-screen player, Up/Down zapping, OK info overlay.
+- **Favourites on launch.** Built (branch `claude/project-thread-pzzcm6`, on top of the guide/EPG work). Not yet checked on the TV.
+  - Hold OK on a channel in Live to favourite it (★). Launch opens **Home**: favourites as large 16:9 cards with the logo
+    (Coil), and after 1.2 s on a card a muted live preview plays inside it. OK opens the player, zapping through favourites.
+    Hold OK on a card removes it. "All channels" opens Live.
   - Not in Phase 1: Left sidebar and Right mini guide in the player (Phases 3/6), logos (Phase 4), settings/source editing (Phase 6).
 
 ## Decisions
@@ -51,6 +55,14 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
   channel ids change on every refresh.
 - Credentials: `util/UrlRedaction.kt`. Error messages show `hostOnly(url)`; never log raw URLs.
 - Cleartext http allowed app-wide (`res/xml/network_security_config.xml`): IPTV is mostly http.
+- **Favourites**: `favourites` table (DB v3, auto-migration from v2; v2 is the guide tables), keyed `(sourceId, stableKey)`, ordered by `position`.
+  Joined to the current generation's channels, so a favourite missing from the playlist hides and returns if it comes back.
+  Removing a source deletes its favourites.
+- **Home preview** (`ui/home/HomeScreen.kt`): uses the one shared ExoPlayer (one decoder, one provider connection) on a
+  TextureView (a SurfaceView ignores the card's focus scale and clip). OK on the previewed card hands the running stream to
+  the player, so it starts without re-buffering. `PlayerHolder.acquire(owner)`/`stop(owner)`: stop only acts for the
+  latest owner, because Home and the player overlap during the screen fade.
+- **Logos**: Coil 3 (`AppContainer.images`, via the app's OkHttp, memory cache 10%). Used on Home cards only so far.
 - **Player** (`playback/PlayerHolder.kt`): one ExoPlayer, created lazily, released in `MainActivity.onStop`.
   Starts after 1 s of buffer. OkHttp data source (follows http→https redirects).
   Zapping is debounced 350 ms, and the old stream is stopped at once (providers often allow 1 connection).
@@ -73,7 +85,8 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
 - EPG import and `get_short_epg` not verified on a real provider yet.
 - Xtream JSON parsing has no unit tests (android.util.JsonReader is a stub on the JVM); it is checked on the TV.
 - tv-material Card/Surface scale animation timing isn't configurable. Revisit in Phase 4.
-- Placeholder banner/icon. No channel logos until Phase 4 (monograms only).
+- Placeholder banner/icon. Channel logos only on Home cards; Live rows and the player overlay still use monograms.
+- Home cards show the guide's current programme and progress under the name when the guide has one.
 
 ## Working notes
 

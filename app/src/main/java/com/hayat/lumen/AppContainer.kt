@@ -2,6 +2,10 @@ package com.hayat.lumen
 
 import android.content.Context
 import androidx.compose.runtime.staticCompositionLocalOf
+import coil3.ImageLoader
+import coil3.memory.MemoryCache
+import coil3.network.okhttp.OkHttpNetworkFetcherFactory
+import coil3.request.crossfade
 import com.hayat.lumen.data.LiveRepository
 import com.hayat.lumen.data.db.LumenDatabase
 import com.hayat.lumen.data.epg.EpgRepository
@@ -37,6 +41,13 @@ class AppContainer(context: Context) {
     val live = LiveRepository(db, http)
     val epg = EpgRepository(db, http, appScope)
     val player = PlayerHolder(appContext, http)
+
+    /** Loads channel logos through [http] (same user agent). Memory cache kept small for the 2 GB TV. */
+    val images: ImageLoader = ImageLoader.Builder(appContext)
+        .components { add(OkHttpNetworkFetcherFactory(callFactory = { http })) }
+        .memoryCache { MemoryCache.Builder().maxSizePercent(appContext, 0.10).build() }
+        .crossfade(true)
+        .build()
 
     /** The channel currently/last playing, so Live can put focus back on it. In-memory for now. */
     val lastChannelId = MutableStateFlow<Long?>(null)

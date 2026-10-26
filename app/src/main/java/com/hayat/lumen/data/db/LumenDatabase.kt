@@ -9,16 +9,20 @@ import androidx.room.RoomDatabase
 @Database(
     entities = [
         SourceEntity::class, ChannelGroupEntity::class, ChannelEntity::class,
-        ProgrammeEntity::class, EpgStateEntity::class,
+        ProgrammeEntity::class, EpgStateEntity::class, FavouriteEntity::class,
     ],
-    version = 2,
-    // Room compares the exported schema JSONs and writes the SQL itself. 1 → 2 adds the guide tables.
-    autoMigrations = [AutoMigration(from = 1, to = 2)],
+    version = 3,
+    // Room compares the exported schema JSONs and writes the SQL itself.
+    autoMigrations = [
+        AutoMigration(from = 1, to = 2), // adds the guide tables
+        AutoMigration(from = 2, to = 3), // adds the favourites table
+    ],
 )
 abstract class LumenDatabase : RoomDatabase() {
     abstract fun sources(): SourceDao
     abstract fun channels(): ChannelDao
     abstract fun epg(): EpgDao
+    abstract fun favourites(): FavouriteDao
 
     companion object {
         fun create(context: Context): LumenDatabase =

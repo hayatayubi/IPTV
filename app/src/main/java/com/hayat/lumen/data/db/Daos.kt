@@ -57,7 +57,8 @@ interface ChannelDao {
 
     @Query(
         """
-        SELECT c.id, c.name, c.number, c.logoUrl, c.playlistOrder
+        SELECT c.id, c.name, c.number, c.logoUrl, c.playlistOrder,
+            EXISTS(SELECT 1 FROM favourites f WHERE f.sourceId = c.sourceId AND f.stableKey = c.stableKey) AS favourite
         FROM channels c JOIN sources s ON s.id = c.sourceId AND s.generation = c.generation
         WHERE c.sourceId = :sourceId AND c.groupName = :groupName
         ORDER BY c.playlistOrder
@@ -159,4 +160,50 @@ interface EpgDao {
         """,
     )
     fun observeForChannels(channelIds: List<Long>, now: Long, until: Long): Flow<List<ChannelProgramme>>
+}
+
+/**
+ * Favourites join to the channel rows of the source's current generation, so a favourite
+ * whose channel vanished from the playlist just doesn't show (and comes back if it returns).
+ */
+@Dao
+interface FavouriteDao {
+    @Query(
+        """
+        SELECT c.id, c.sourceId, c.stableKey, c.name, c.number, c.logoUrl
+        FROM favourites f
+        JOIN sources s ON s.id = f.sourceId
+        JOIN channels c ON c.sourceId = f.sourceId AND c.stableKey = f.stableKey AND c.generation = s.generation
+        ORDER BY f.position
+        """,
+    )
+    fun observe(): Flow<List<FavouriteRow>>
+
+    @Query(
+        """
+        SELECT c.id, c.name, c.number, c.streamUrl, c.groupName, c.playlistOrder
+        FROM favourites f
+        JOIN sources s ON s.id = f.sourceId
+        JOIN channels c ON c.sourceId = f.sourceId AND c.stableKey = f.stableKey AND c.generation = s.generation
+        ORDER BY f.position
+        """,
+    )
+    suspend fun playable(): List<PlayableChannel>
+
+    @Query("SELECT EXISTS(SELECT 1 FROM favourites WHERE sourceId = :sourceId AND stableKey = :stableKey)")
+    suspend fun contains(sourceId: Long, stableKey: String): Boolean
+
+    @Query(
+        """
+        INSERT OR IGNORE INTO favourites (sourceId, stableKey, position, addedAt)
+        VALUES (:sourceId, :stableKey, (SELECT COALESCE(MAX(position), -1) + 1 FROM favourites), :at)
+        """,
+    )
+    suspend fun add(sourceId: Long, stableKey: String, at: Long)
+
+    @Query("DELETE FROM favourites WHERE sourceId = :sourceId AND stableKey = :stableKey")
+    suspend fun remove(sourceId: Long, stableKey: String)
+
+    @Query("DELETE FROM favourites WHERE sourceId = :sourceId")
+    suspend fun removeAllOf(sourceId: Long)
 }

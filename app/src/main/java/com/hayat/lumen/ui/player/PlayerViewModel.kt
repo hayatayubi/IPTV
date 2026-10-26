@@ -19,13 +19,17 @@ import kotlinx.coroutines.launch
 
 data class Tuned(val channel: PlayableChannel, val position: Int, val total: Int)
 
-/** Which channel is tuned, and the group list to zap through with Up/Down. */
+/**
+ * Which channel is tuned, and the list to zap through with Up/Down: the favourites
+ * when [inFavourites] (opened from Home), else the channel's group.
+ */
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlayerViewModel(
     private val repo: LiveRepository,
     epg: EpgRepository,
     private val lastChannelId: MutableStateFlow<Long?>,
     startChannelId: Long,
+    inFavourites: Boolean,
 ) : ViewModel() {
 
     private var list: List<PlayableChannel> = emptyList()
@@ -42,7 +46,8 @@ class PlayerViewModel(
     init {
         viewModelScope.launch {
             val start = repo.channel(startChannelId) ?: return@launch
-            list = repo.playableInGroup(start.sourceId, start.groupName)
+            list = repo.playableFavourites().takeIf { inFavourites && it.any { c -> c.id == startChannelId } }
+                ?: repo.playableInGroup(start.sourceId, start.groupName)
             val index = list.indexOfFirst { it.id == startChannelId }
             if (index >= 0) tune(index)
         }

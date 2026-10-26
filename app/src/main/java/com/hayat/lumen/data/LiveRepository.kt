@@ -3,6 +3,7 @@ package com.hayat.lumen.data
 import androidx.room.withTransaction
 import com.hayat.lumen.data.db.ChannelEntity
 import com.hayat.lumen.data.db.ChannelGroupEntity
+import com.hayat.lumen.data.db.FavouriteRow
 import com.hayat.lumen.data.db.GroupRow
 import com.hayat.lumen.data.db.LumenDatabase
 import com.hayat.lumen.data.db.SourceEntity
@@ -36,9 +37,11 @@ class LiveRepository(
     private val xtream = XtreamClient(http)
     private val sourceDao = db.sources()
     private val channelDao = db.channels()
+    private val favouriteDao = db.favourites()
 
     val sources: Flow<List<SourceEntity>> = sourceDao.observeAll()
     val groups: Flow<List<GroupRow>> = channelDao.observeGroups()
+    val favourites: Flow<List<FavouriteRow>> = favouriteDao.observe()
 
     fun channels(sourceId: Long, groupName: String) = channelDao.observeChannels(sourceId, groupName)
 
@@ -47,6 +50,20 @@ class LiveRepository(
     suspend fun channel(id: Long) = channelDao.get(id)
 
     suspend fun playableInGroup(sourceId: Long, groupName: String) = channelDao.playableInGroup(sourceId, groupName)
+
+    suspend fun playableFavourites() = favouriteDao.playable()
+
+    /** Adds the channel to favourites, or removes it if it already is one. */
+    suspend fun toggleFavourite(channelId: Long) = db.withTransaction {
+        val channel = channelDao.get(channelId) ?: return@withTransaction
+        if (favouriteDao.contains(channel.sourceId, channel.stableKey)) {
+            favouriteDao.remove(channel.sourceId, channel.stableKey)
+        } else {
+            favouriteDao.add(channel.sourceId, channel.stableKey, System.currentTimeMillis())
+        }
+    }
+
+    suspend fun removeFavourite(sourceId: Long, stableKey: String) = favouriteDao.remove(sourceId, stableKey)
 
     /**
      * Adds an M3U source and imports it. If the first import fails, the source is removed again.
@@ -85,6 +102,7 @@ class LiveRepository(
         channelDao.deleteAllGroups(sourceId)
         db.epg().deleteAllProgrammes(sourceId)
         db.epg().deleteState(sourceId)
+        favouriteDao.removeAllOf(sourceId)
         sourceDao.delete(sourceId)
     }
 

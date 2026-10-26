@@ -64,13 +64,13 @@ private enum class Status { LOADING, PLAYING, FAILED }
 
 /**
  * Full-screen live player.
- * Up/Down: previous/next channel in the group · OK: info overlay · Back: hide overlay, then leave.
+ * Up/Down: previous/next channel in the group (or in favourites, when opened from Home) · OK: info overlay · Back: hide overlay, then leave.
  */
 @OptIn(UnstableApi::class)
 @Composable
-fun PlayerScreen(channelId: Long) {
+fun PlayerScreen(channelId: Long, inFavourites: Boolean) {
     val container = LocalAppContainer.current
-    val vm = viewModel { PlayerViewModel(container.live, container.epg, container.lastChannelId, channelId) }
+    val vm = viewModel { PlayerViewModel(container.live, container.epg, container.lastChannelId, channelId, inFavourites) }
     val tuned by vm.tuned.collectAsStateWithLifecycle()
     val nowNext by vm.nowNext.collectAsStateWithLifecycle()
 
@@ -88,12 +88,14 @@ fun PlayerScreen(channelId: Long) {
 
     // Acquire the shared player while this screen is visible; stop it when it isn't.
     // (MainActivity releases it fully when the app goes to the background.)
+    // `owner` tells the holder who's asking, so Home's preview can't stop us during the fade.
+    val owner = remember { Any() }
     LifecycleStartEffect(Unit) {
-        val p = container.player.acquire()
+        val p = container.player.acquire(owner)
+        p.volume = 1f // Home's preview plays muted
         player = p
         onStopOrDispose {
-            p.stop()
-            p.clearMediaItems()
+            container.player.stop(owner)
             player = null
         }
     }
@@ -127,6 +129,12 @@ fun PlayerScreen(channelId: Long) {
     LaunchedEffect(player, tuned?.channel?.id, retry) {
         val p = player ?: return@LaunchedEffect
         val channel = tuned?.channel ?: return@LaunchedEffect
+        // Opened from Home while its preview plays this channel: keep the stream, no re-buffer.
+        if (retry == 0 && p.currentMediaItem?.localConfiguration?.uri?.toString() == channel.streamUrl) {
+            if (p.playbackState == Player.STATE_READY) status = Status.PLAYING
+            p.playWhenReady = true
+            return@LaunchedEffect
+        }
         val firstTune = p.currentMediaItem == null
         p.stop()
         status = Status.LOADING
