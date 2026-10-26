@@ -36,6 +36,15 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
   `android.util.JsonReader`) and builds `/live/<user>/<pass>/<id>.m3u8` (or `.ts` if HLS isn't allowed).
   A pasted `get.php?username=…&password=…` link is stored as Xtream automatically: the owner's provider
   blocks `get.php` (answers HTTP 884) but allows the API, which also gives proper groups.
+- **EPG** (`data/epg/`): one guide URL per source = user-entered `epgUrl`, else the playlist's `url-tvg`
+  (stored into `epgUrl` on import), else Xtream `xmltv.php` (built on the fly, never shown: it holds the password).
+  `XmltvParser` streams `<programme>`s (gzip files detected by magic bytes); only channels whose
+  `lower(tvgId)` is in the playlist, and only now−2 h … now+36 h, are stored in `programmes` under a new `batch`,
+  then `epg_state.batch` is switched in one transaction (same idea as channel generations).
+  Auto-update: at launch if older than 12 h, after adding a playlist, and with Live's Refresh. Settings: Live → TV guide.
+  Reading: `EpgRepository.nowNextForGroup` (stored guide only), `nowNextForChannels`/`nowNext` (small lists:
+  player, focused row, favourites) fall back to Xtream `get_short_epg` per channel, cached in memory.
+  No name matching yet: channels without a tvg-id get no guide.
 - M3U entries whose URL contains `/movie/` or `/series/` are skipped (VOD comes via Xtream in Phase 5).
 - **Stable keys** (`data/m3u/StableKeys.kt`): `tvg:<id>`, else a hash of name + URL with credentials stripped.
   Duplicates get `|name`, then `#n`. Phase 2 user state must key on `(sourceId, stableKey)`, **not** row ids:
@@ -61,6 +70,7 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
 - Not verified on device yet (Phase 1): Back priority between `BackHandler` in the player and NavDisplay;
   focus return to the last channel after leaving the player.
 - `type=m3u` Xtream URLs have no group/logo attributes. Moot for `get.php` links now: they go through the Xtream API.
+- EPG import and `get_short_epg` not verified on a real provider yet.
 - Xtream JSON parsing has no unit tests (android.util.JsonReader is a stub on the JVM); it is checked on the TV.
 - tv-material Card/Surface scale animation timing isn't configurable. Revisit in Phase 4.
 - Placeholder banner/icon. No channel logos until Phase 4 (monograms only).

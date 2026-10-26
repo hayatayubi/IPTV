@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -34,6 +35,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleStartEffect
@@ -47,8 +49,12 @@ import androidx.media3.ui.compose.ContentFrame
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.hayat.lumen.LocalAppContainer
+import com.hayat.lumen.data.epg.NowNext
 import com.hayat.lumen.playback.PlayerHolder
 import com.hayat.lumen.ui.components.Monogram
+import com.hayat.lumen.ui.components.ProgrammeProgress
+import com.hayat.lumen.ui.components.formatTime
+import com.hayat.lumen.ui.components.timeRange
 import com.hayat.lumen.ui.theme.LumenColors
 import com.hayat.lumen.ui.theme.LumenMotion
 import com.hayat.lumen.ui.theme.SafeArea
@@ -64,8 +70,9 @@ private enum class Status { LOADING, PLAYING, FAILED }
 @Composable
 fun PlayerScreen(channelId: Long) {
     val container = LocalAppContainer.current
-    val vm = viewModel { PlayerViewModel(container.live, container.lastChannelId, channelId) }
+    val vm = viewModel { PlayerViewModel(container.live, container.epg, container.lastChannelId, channelId) }
     val tuned by vm.tuned.collectAsStateWithLifecycle()
+    val nowNext by vm.nowNext.collectAsStateWithLifecycle()
 
     var player by remember { mutableStateOf<ExoPlayer?>(null) }
     var status by remember { mutableStateOf(Status.LOADING) }
@@ -182,7 +189,7 @@ fun PlayerScreen(channelId: Long) {
             exit = fadeOut(LumenMotion.focus()),
             modifier = Modifier.align(Alignment.BottomCenter),
         ) {
-            tuned?.let { InfoOverlay(it, status) }
+            tuned?.let { InfoOverlay(it, nowNext, status) }
         }
     }
 
@@ -190,7 +197,7 @@ fun PlayerScreen(channelId: Long) {
 }
 
 @Composable
-private fun InfoOverlay(tuned: Tuned, status: Status) {
+private fun InfoOverlay(tuned: Tuned, nowNext: NowNext?, status: Status) {
     val channel = tuned.channel
     Box(
         Modifier
@@ -208,12 +215,37 @@ private fun InfoOverlay(tuned: Tuned, status: Status) {
                     color = LumenColors.TextPrimary,
                     maxLines = 1,
                 )
-                Text(
-                    channel.groupName,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = LumenColors.TextSecondary,
-                    maxLines = 1,
-                )
+                val now = nowNext?.now
+                if (now == null) {
+                    Text(
+                        channel.groupName,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = LumenColors.TextSecondary,
+                        maxLines = 1,
+                    )
+                } else {
+                    Text(
+                        "${now.title}   ${now.timeRange()}",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = LumenColors.TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    ProgrammeProgress(
+                        now.progress(System.currentTimeMillis()),
+                        color = LumenColors.TextSecondary,
+                        modifier = Modifier.padding(vertical = 6.dp).widthIn(max = 480.dp),
+                    )
+                }
+                nowNext?.next?.let { next ->
+                    Text(
+                        "Next  ${formatTime(next.start)}  ${next.title}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = LumenColors.TextTertiary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(

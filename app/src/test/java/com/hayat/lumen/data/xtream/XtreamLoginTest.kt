@@ -45,4 +45,13 @@ class XtreamLoginTest {
         val login = XtreamLogin.of("http://h.example.com", "a b", "p&q")!!
         assertEquals("http://h.example.com/player_api.php?username=a%20b&password=p%26q", login.apiUrl().toString())
     }
+
+    @Test
+    fun `guide link and stream ids`() {
+        val login = XtreamLogin.of("h.example.com:8080", "u", "p")!!
+        assertEquals("http://h.example.com:8080/xmltv.php?username=u&password=p", login.xmltvUrl())
+        assertEquals("42", XtreamLogin.streamIdOf(login.liveStreamUrl("42", "m3u8")))
+        assertEquals("7", XtreamLogin.streamIdOf("http://h.example.com/live/u/p/7.ts"))
+        assertNull(XtreamLogin.streamIdOf("http://h.example.com/movie/u/p/7.mp4"))
+    }
 }

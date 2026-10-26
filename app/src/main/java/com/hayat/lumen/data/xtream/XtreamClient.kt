@@ -13,6 +13,9 @@ data class XtreamAccount(val outputExtension: String)
 
 data class XtreamCategory(val id: String, val name: String)
 
+/** One `get_short_epg` listing. Times are epoch millis. */
+data class XtreamListing(val title: String, val description: String?, val start: Long, val stop: Long)
+
 data class XtreamStream(
     val streamId: String,
     val name: String,
@@ -153,6 +156,63 @@ class XtreamClient(private val http: OkHttpClient) {
         override fun close() = response.close()
     }
 
+    /**
+     * The next few programmes on one channel (`get_short_epg`). A fallback for panels whose
+     * `xmltv.php` is blocked or empty; one request per channel, so only for a handful at a time.
+     */
+    fun shortEpg(login: XtreamLogin, streamId: String, host: String, limit: Int = 4): List<XtreamListing> {
+        val url = login.apiUrl("get_short_epg").newBuilder()
+            .addQueryParameter("stream_id", streamId)
+            .addQueryParameter("limit", limit.toString())
+            .build()
+        return http.newCall(Request.Builder().url(url).build()).execute().use { response ->
+            if (!response.isSuccessful) throw ImportException("$host answered with error ${response.code}.")
+            try {
+                JsonReader(response.body.charStream()).apply { isLenient = true }.use(::readListings)
+            } catch (e: IllegalStateException) {
+                throw unreadable(host, e)
+            } catch (e: NumberFormatException) {
+                throw unreadable(host, e)
+            }
+        }
+    }
+
+    private fun readListings(reader: JsonReader): List<XtreamListing> {
+        val out = ArrayList<XtreamListing>()
+        if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+            reader.skipValue()
+            return out
+        }
+        reader.beginObject()
+        while (reader.hasNext()) {
+            if (reader.nextName() != "epg_listings") {
+                reader.skipValue()
+                continue
+            }
+            reader.forEachObjectInArray {
+                var title: String? = null
+                var description: String? = null
+                var start: Long? = null
+                var stop: Long? = null
+                while (reader.hasNext()) {
+                    when (reader.nextName()) {
+                        "title" -> title = reader.lenientString()
+                        "description" -> description = reader.lenientString()
+                        "start_timestamp" -> start = reader.lenientString()?.toLongOrNull()
+                        "stop_timestamp" -> stop = reader.lenientString()?.toLongOrNull()
+                        else -> reader.skipValue()
+                    }
+                }
+                val name = title?.let(::decodeText)?.trim()
+                if (!name.isNullOrEmpty() && start != null && stop != null && stop > start) {
+                    out += XtreamListing(name, description?.let(::decodeText)?.trim()?.ifEmpty { null }, start * 1000, stop * 1000)
+                }
+            }
+        }
+        reader.endObject()
+        return out
+    }
+
     private fun open(login: XtreamLogin, action: String?, host: String): Response {
         val request = Request.Builder().url(login.apiUrl(action)).build()
         val response = http.newCall(request).execute()
@@ -176,6 +236,13 @@ class XtreamClient(private val http: OkHttpClient) {
         }
 
     private companion object {
+        /** Xtream sends EPG text base64-encoded; a few panels send it plain. */
+        fun decodeText(raw: String): String {
+            val bytes = runCatching { java.util.Base64.getDecoder().decode(raw.trim()) }.getOrNull() ?: return raw
+            val decoder = Charsets.UTF_8.newDecoder()
+            return runCatching { decoder.decode(java.nio.ByteBuffer.wrap(bytes)).toString() }.getOrNull() ?: raw
+        }
+
         /** The server sent something that isn't Xtream JSON (an HTML error page, say). */
         fun unreadable(host: String, cause: Throwable) =
             ImportException("$host sent something Lumen couldn't read. Is this an Xtream server?", cause)

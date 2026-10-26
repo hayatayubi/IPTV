@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -34,13 +35,17 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.hayat.lumen.LocalAppContainer
 import com.hayat.lumen.data.db.ChannelRow
+import com.hayat.lumen.data.epg.NowNext
 import com.hayat.lumen.ui.components.LumenButton
 import com.hayat.lumen.ui.components.LumenListItem
 import com.hayat.lumen.ui.components.Monogram
+import com.hayat.lumen.ui.components.ProgrammeProgress
+import com.hayat.lumen.ui.components.formatTime
 import com.hayat.lumen.ui.theme.LumenColors
 import com.hayat.lumen.ui.theme.SafeArea
 import java.text.NumberFormat
@@ -50,13 +55,15 @@ import java.text.NumberFormat
  * Moving focus onto a group shows its channels (no OK needed); OK on a channel plays it.
  */
 @Composable
-fun LiveScreen(onPlay: (channelId: Long) -> Unit) {
+fun LiveScreen(onPlay: (channelId: Long) -> Unit, onOpenGuide: () -> Unit) {
     val container = LocalAppContainer.current
-    val vm = viewModel { LiveViewModel(container.live) }
+    val vm = viewModel { LiveViewModel(container.live, container.epg) }
     val groups by vm.groups.collectAsStateWithLifecycle()
     val selected by vm.selected.collectAsStateWithLifecycle()
     val channels by vm.channels.collectAsStateWithLifecycle()
     val refresh by vm.refresh.collectAsStateWithLifecycle()
+    val guide by vm.guide.collectAsStateWithLifecycle()
+    val focusedGuide by vm.focusedGuide.collectAsStateWithLifecycle()
     val focusManager = LocalFocusManager.current
 
     val multipleSources = remember(groups) { groups.distinctBy { it.sourceId }.size > 1 }
@@ -143,6 +150,8 @@ fun LiveScreen(onPlay: (channelId: Long) -> Unit) {
                     onClick = vm::refreshAll,
                     enabled = refresh !is RefreshState.Running,
                 )
+                Spacer(Modifier.width(12.dp))
+                LumenButton(text = "TV guide", onClick = onOpenGuide)
             }
             Spacer(Modifier.height(16.dp))
             LazyColumn(
@@ -155,11 +164,13 @@ fun LiveScreen(onPlay: (channelId: Long) -> Unit) {
                     ChannelItem(
                         channel = channel,
                         position = index + 1,
+                        nowNext = guide[channel.id] ?: focusedGuide?.takeIf { it.first == channel.id }?.second,
                         onClick = {
                             container.lastChannelId.value = channel.id
                             onPlay(channel.id)
                         },
-                        modifier = if (channel.id == returnTo) Modifier.focusRequester(channelFocus) else Modifier,
+                        modifier = (if (channel.id == returnTo) Modifier.focusRequester(channelFocus) else Modifier)
+                            .onFocusChanged { if (it.isFocused) vm.focusChannel(channel.id) },
                     )
                 }
             }
@@ -181,7 +192,7 @@ fun LiveScreen(onPlay: (channelId: Long) -> Unit) {
 }
 
 @Composable
-private fun ChannelItem(channel: ChannelRow, position: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun ChannelItem(channel: ChannelRow, position: Int, nowNext: NowNext?, onClick: () -> Unit, modifier: Modifier = Modifier) {
     LumenListItem(onClick = onClick, modifier = modifier, minHeight = 64.dp) {
         Text(
             (channel.number ?: position).toString(),
@@ -189,12 +200,40 @@ private fun ChannelItem(channel: ChannelRow, position: Int, onClick: () -> Unit,
             modifier = Modifier.width(48.dp),
         )
         Monogram(channel.name, size = 44.dp)
-        Text(
-            channel.name,
-            style = MaterialTheme.typography.titleMedium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        // LocalContentColor flips to dark when the row is focused, so guide text follows it
+        // (dimmed) instead of using a fixed grey that would vanish on the light focused row.
+        val dim = LocalContentColor.current.copy(alpha = 0.7f)
+        Column(Modifier.weight(1f)) {
+            Text(
+                channel.name,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            nowNext?.now?.let { now ->
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        now.title,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = dim,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    ProgrammeProgress(now.progress(System.currentTimeMillis()), color = dim, modifier = Modifier.width(64.dp))
+                }
+            }
+        }
+        nowNext?.next?.let { next ->
+            Text(
+                "${formatTime(next.start)}  ${next.title}",
+                style = MaterialTheme.typography.bodySmall,
+                color = dim,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 260.dp),
+            )
+        }
     }
 }
 

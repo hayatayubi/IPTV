@@ -19,6 +19,7 @@ import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import com.hayat.lumen.LocalAppContainer
 import com.hayat.lumen.ui.addsource.AddSourceScreen
+import com.hayat.lumen.ui.guide.GuideSettingsScreen
 import com.hayat.lumen.ui.live.LiveScreen
 import com.hayat.lumen.ui.player.PlayerScreen
 import com.hayat.lumen.ui.theme.LumenColors
@@ -29,6 +30,7 @@ sealed interface Route
 data object AddSourceRoute : Route
 data object LiveRoute : Route
 data class PlayerRoute(val channelId: Long) : Route
+data object GuideSettingsRoute : Route
 
 /**
  * App navigation. Like SwiftUI's NavigationStack(path:), the back stack is a list we
@@ -67,16 +69,23 @@ fun LumenRoot(onExit: () -> Unit) {
         entryProvider = entryProvider {
             entry<AddSourceRoute> {
                 AddSourceScreen(onAdded = {
+                    container.epg.updateStaleInBackground() // load the new playlist's guide
                     // Replace "Add" with Live, so Back from Live exits rather than returning here.
                     backStack.add(LiveRoute)
                     backStack.removeAll { it != LiveRoute }
                 })
             }
             entry<LiveRoute> {
-                LiveScreen(onPlay = { backStack.add(PlayerRoute(it)) })
+                LiveScreen(
+                    onPlay = { backStack.add(PlayerRoute(it)) },
+                    onOpenGuide = { backStack.add(GuideSettingsRoute) },
+                )
             }
             entry<PlayerRoute> { route ->
                 PlayerScreen(channelId = route.channelId)
+            }
+            entry<GuideSettingsRoute> {
+                GuideSettingsScreen()
             }
         },
     )

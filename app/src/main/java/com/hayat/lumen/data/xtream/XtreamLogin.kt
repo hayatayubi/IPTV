@@ -20,6 +20,14 @@ data class XtreamLogin(val server: HttpUrl, val username: String, val password: 
         .apply { if (action != null) addQueryParameter("action", action) }
         .build()
 
+    /** The panel's full XMLTV guide, `xmltv.php`. Used when the user hasn't entered their own guide URL. */
+    fun xmltvUrl(): String = server.newBuilder()
+        .addPathSegment("xmltv.php")
+        .addQueryParameter("username", username)
+        .addQueryParameter("password", password)
+        .build()
+        .toString()
+
     /** Xtream's live stream path: `/live/<user>/<pass>/<id>.<ext>`. */
     fun liveStreamUrl(streamId: String, extension: String): String = server.newBuilder()
         .addPathSegment("live")
@@ -30,6 +38,11 @@ data class XtreamLogin(val server: HttpUrl, val username: String, val password: 
         .toString()
 
     companion object {
+        private val liveStreamId = Regex("/live/[^/]+/[^/]+/(\\d+)(\\.[a-z0-9]+)?$", RegexOption.IGNORE_CASE)
+
+        /** The stream id in a URL built by [liveStreamUrl], e.g. `…/live/u/p/123.m3u8` → `123`. */
+        fun streamIdOf(streamUrl: String): String? = liveStreamId.find(streamUrl.substringBefore('?'))?.groupValues?.get(1)
+
         /** Server typed by hand, e.g. `cf.example.com:8080` or `http://cf.example.com/`. Null if unusable. */
         fun of(server: String, username: String, password: String): XtreamLogin? {
             val raw = server.trim().let { if ("://" in it) it else "http://$it" }

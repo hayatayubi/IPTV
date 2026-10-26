@@ -87,3 +87,46 @@ data class PlayableChannel(
     val groupName: String,
     val playlistOrder: Int,
 )
+
+/**
+ * One TV guide entry, from a source's XMLTV feed. [channelKey] is the XMLTV channel id,
+ * lowercased, and matches `lower(channels.tvgId)` (Xtream's `epg_channel_id`).
+ * Only programmes for channels in the playlist, and only the next day or so, are kept.
+ */
+@Entity(
+    tableName = "programmes",
+    indices = [Index(value = ["sourceId", "batch", "channelKey", "stop"])],
+)
+data class ProgrammeEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val sourceId: Long,
+    val batch: Long,
+    val channelKey: String,
+    val start: Long,
+    val stop: Long,
+    val title: String,
+    val description: String?,
+)
+
+/**
+ * Guide status per source. Programmes are written under a new [batch], then [batch] is
+ * switched in one transaction (like channel generations), so a failed update keeps the old guide.
+ */
+@Entity(tableName = "epg_state")
+data class EpgStateEntity(
+    @PrimaryKey val sourceId: Long,
+    val batch: Long,
+    val updatedAt: Long?,
+    val programmeCount: Int,
+    val channelCount: Int,
+    val error: String?,
+)
+
+/** A programme joined to the playlist channel it belongs to. */
+data class ChannelProgramme(
+    val channelId: Long,
+    val title: String,
+    val description: String?,
+    val start: Long,
+    val stop: Long,
+)

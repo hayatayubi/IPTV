@@ -4,7 +4,11 @@ import android.content.Context
 import androidx.compose.runtime.staticCompositionLocalOf
 import com.hayat.lumen.data.LiveRepository
 import com.hayat.lumen.data.db.LumenDatabase
+import com.hayat.lumen.data.epg.EpgRepository
 import com.hayat.lumen.playback.PlayerHolder
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
@@ -26,12 +30,21 @@ class AppContainer(context: Context) {
         }
         .build()
 
+    /** For work that should finish even if the screen that started it closes (guide downloads). */
+    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
     val db: LumenDatabase = LumenDatabase.create(appContext)
     val live = LiveRepository(db, http)
+    val epg = EpgRepository(db, http, appScope)
     val player = PlayerHolder(appContext, http)
 
     /** The channel currently/last playing, so Live can put focus back on it. In-memory for now. */
     val lastChannelId = MutableStateFlow<Long?>(null)
+
+    init {
+        // Guides go stale within a day; refresh any older than 12 hours in the background.
+        epg.updateStaleInBackground()
+    }
 
     private companion object {
         const val USER_AGENT = "Lumen/0.1 (Android TV)"

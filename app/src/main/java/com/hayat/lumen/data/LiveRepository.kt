@@ -83,6 +83,8 @@ class LiveRepository(
     suspend fun remove(sourceId: Long) = db.withTransaction {
         channelDao.deleteAllChannels(sourceId)
         channelDao.deleteAllGroups(sourceId)
+        db.epg().deleteAllProgrammes(sourceId)
+        db.epg().deleteState(sourceId)
         sourceDao.delete(sourceId)
     }
 

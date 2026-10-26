@@ -95,6 +95,7 @@ dependencies {
     implementation(libs.okhttp)
 
     testImplementation(libs.junit)
+    testImplementation(libs.kxml2)
 }
 
 ksp {
