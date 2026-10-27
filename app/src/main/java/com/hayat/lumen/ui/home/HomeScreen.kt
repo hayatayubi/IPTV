@@ -66,10 +66,10 @@ import kotlinx.coroutines.delay
 /**
  * The launch screen: favourite channels as large cards. Resting on a card for a moment
  * plays it muted inside the card; OK opens it full screen (zapping through favourites),
- * holding OK removes it. "All channels" opens Live.
+ * holding OK removes it. "All channels" opens Live, "TV guide" the guide grid.
  */
 @Composable
-fun HomeScreen(onPlay: (channelId: Long) -> Unit, onBrowse: () -> Unit) {
+fun HomeScreen(onPlay: (channelId: Long) -> Unit, onBrowse: () -> Unit, onOpenGuide: () -> Unit) {
     val container = LocalAppContainer.current
     val vm = viewModel { HomeViewModel(container.live, container.epg) }
     val favourites by vm.favourites.collectAsStateWithLifecycle()
@@ -105,6 +105,8 @@ fun HomeScreen(onPlay: (channelId: Long) -> Unit, onBrowse: () -> Unit) {
                 modifier = Modifier.weight(1f),
             )
             LumenButton(text = "All channels", onClick = onBrowse, modifier = Modifier.focusRequester(buttonFocus))
+            Spacer(Modifier.width(12.dp))
+            LumenButton(text = "TV guide", onClick = onOpenGuide)
         }
 
         if (list.isEmpty()) {
