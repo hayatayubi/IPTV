@@ -54,11 +54,11 @@ import java.text.NumberFormat
 
 /**
  * Live: groups on the left, the selected group's channels on the right.
- * Moving focus onto a group shows its channels (no OK needed); OK on a channel plays it,
- * holding OK adds it to (or removes it from) favourites.
+ * Moving focus onto a group shows its channels (no OK needed); holding OK on a group hides it.
+ * OK on a channel plays it, holding OK adds it to (or removes it from) favourites.
  */
 @Composable
-fun LiveScreen(onPlay: (channelId: Long) -> Unit, onOpenGuide: () -> Unit) {
+fun LiveScreen(onPlay: (channelId: Long) -> Unit, onOpenGuide: () -> Unit, onManageCategories: () -> Unit) {
     val container = LocalAppContainer.current
     val vm = viewModel { LiveViewModel(container.live, container.epg) }
     val groups by vm.groups.collectAsStateWithLifecycle()
@@ -67,11 +67,16 @@ fun LiveScreen(onPlay: (channelId: Long) -> Unit, onOpenGuide: () -> Unit) {
     val refresh by vm.refresh.collectAsStateWithLifecycle()
     val guide by vm.guide.collectAsStateWithLifecycle()
     val focusedGuide by vm.focusedGuide.collectAsStateWithLifecycle()
+    val notice by vm.notice.collectAsStateWithLifecycle()
+    val everythingHidden by vm.everythingHidden.collectAsStateWithLifecycle()
     val focusManager = LocalFocusManager.current
 
     val multipleSources = remember(groups) { groups.distinctBy { it.sourceId }.size > 1 }
     val groupFocus = remember { FocusRequester() }
     val channelFocus = remember { FocusRequester() }
+    val categoriesFocus = remember { FocusRequester() }
+    // Set when a group is hidden: its row (which had focus) disappears, so focus moves to the new selection.
+    var refocusGroup by remember { mutableStateOf(false) }
     val channelListState = rememberLazyListState()
 
     // Coming back from the player: put focus on the channel that was playing.
@@ -107,6 +112,10 @@ fun LiveScreen(onPlay: (channelId: Long) -> Unit, onOpenGuide: () -> Unit) {
                     val isSelected = selected?.sourceId == group.sourceId && selected?.name == group.name
                     LumenListItem(
                         onClick = { focusManager.moveFocus(FocusDirection.Right) },
+                        onLongClick = {
+                            refocusGroup = true
+                            vm.hide(group)
+                        },
                         selected = isSelected,
                         modifier = Modifier
                             .then(if (isSelected) Modifier.focusRequester(groupFocus) else Modifier)
@@ -142,7 +151,7 @@ fun LiveScreen(onPlay: (channelId: Long) -> Unit, onOpenGuide: () -> Unit) {
                     when (val r = refresh) {
                         is RefreshState.Failed -> r.message
                         is RefreshState.Running -> if (r.channels == 0) "Refreshing…" else "Refreshing… ${formatCount(r.channels)}"
-                        RefreshState.Idle -> ""
+                        RefreshState.Idle -> notice.orEmpty()
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = LumenColors.TextSecondary,
@@ -155,8 +164,18 @@ fun LiveScreen(onPlay: (channelId: Long) -> Unit, onOpenGuide: () -> Unit) {
                 )
                 Spacer(Modifier.width(12.dp))
                 LumenButton(text = "TV guide", onClick = onOpenGuide)
+                Spacer(Modifier.width(12.dp))
+                LumenButton(text = "Categories", onClick = onManageCategories, modifier = Modifier.focusRequester(categoriesFocus))
             }
             Spacer(Modifier.height(16.dp))
+            if (everythingHidden) {
+                Text(
+                    "All categories are hidden. Open Categories to choose what shows here.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = LumenColors.TextSecondary,
+                    modifier = Modifier.padding(16.dp),
+                )
+            }
             LazyColumn(
                 state = channelListState,
                 modifier = Modifier.focusRestorer(),
@@ -179,6 +198,22 @@ fun LiveScreen(onPlay: (channelId: Long) -> Unit, onOpenGuide: () -> Unit) {
                 }
             }
         }
+    }
+
+    LaunchedEffect(groups, everythingHidden) {
+        if (!refocusGroup) return@LaunchedEffect
+        withFrameNanos { } // let the new selection's row compose first
+        if (runCatching { groupFocus.requestFocus() }.isSuccess) {
+            refocusGroup = false
+        } else if (everythingHidden) {
+            refocusGroup = false
+            runCatching { categoriesFocus.requestFocus() }
+        }
+    }
+
+    // Nothing to show (everything hidden): start on Categories.
+    LaunchedEffect(everythingHidden) {
+        if (everythingHidden && !initialFocusDone) initialFocusDone = runCatching { categoriesFocus.requestFocus() }.isSuccess
     }
 
     // First focus: the channel we came back from, else the selected group.

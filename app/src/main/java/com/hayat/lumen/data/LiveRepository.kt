@@ -2,9 +2,11 @@ package com.hayat.lumen.data
 
 import androidx.room.withTransaction
 import com.hayat.lumen.data.db.ChannelEntity
+import com.hayat.lumen.data.db.CategoryRow
 import com.hayat.lumen.data.db.ChannelGroupEntity
 import com.hayat.lumen.data.db.FavouriteRow
 import com.hayat.lumen.data.db.GroupRow
+import com.hayat.lumen.data.db.HiddenGroupEntity
 import com.hayat.lumen.data.db.LumenDatabase
 import com.hayat.lumen.data.db.SourceEntity
 import com.hayat.lumen.data.db.SourceType
@@ -38,10 +40,14 @@ class LiveRepository(
     private val sourceDao = db.sources()
     private val channelDao = db.channels()
     private val favouriteDao = db.favourites()
+    private val hiddenDao = db.hidden()
 
     val sources: Flow<List<SourceEntity>> = sourceDao.observeAll()
     val groups: Flow<List<GroupRow>> = channelDao.observeGroups()
     val favourites: Flow<List<FavouriteRow>> = favouriteDao.observe()
+
+    /** All categories with their hidden flag, for Manage categories. */
+    val categories: Flow<List<CategoryRow>> = channelDao.observeCategories()
 
     fun channels(sourceId: Long, groupName: String) = channelDao.observeChannels(sourceId, groupName)
 
@@ -64,6 +70,18 @@ class LiveRepository(
     }
 
     suspend fun removeFavourite(sourceId: Long, stableKey: String) = favouriteDao.remove(sourceId, stableKey)
+
+    // Hiding. Chunked because SQLite on older Android allows at most 999 query parameters.
+
+    suspend fun hideGroups(sourceId: Long, names: List<String>) = db.withTransaction {
+        for (chunk in names.chunked(CHUNK)) hiddenDao.hide(chunk.map { HiddenGroupEntity(sourceId, it) })
+    }
+
+    suspend fun showGroups(sourceId: Long, names: List<String>) = db.withTransaction {
+        for (chunk in names.chunked(CHUNK)) hiddenDao.show(sourceId, chunk)
+    }
+
+    suspend fun setSourceHidden(sourceId: Long, hidden: Boolean) = sourceDao.setHidden(sourceId, hidden)
 
     /**
      * Adds an M3U source and imports it. If the first import fails, the source is removed again.
@@ -103,6 +121,7 @@ class LiveRepository(
         db.epg().deleteAllProgrammes(sourceId)
         db.epg().deleteState(sourceId)
         favouriteDao.removeAllOf(sourceId)
+        hiddenDao.removeAllOf(sourceId)
         sourceDao.delete(sourceId)
     }
 
@@ -249,6 +268,7 @@ class LiveRepository(
 
     private companion object {
         const val BATCH = 500
+        const val CHUNK = 500
         const val UNGROUPED = "All channels"
     }
 }

@@ -114,6 +114,7 @@ class EpgRepository(
             val states = epgDao.observeStates().first().associateBy { it.sourceId }
             val now = System.currentTimeMillis()
             for (source in sourceDao.observeAll().first()) {
+                if (source.hidden) continue
                 val updatedAt = states[source.id]?.updatedAt
                 if (updatedAt == null || now - updatedAt > STALE_AFTER_MS) runCatching { update(source.id) }
             }
@@ -125,7 +126,7 @@ class EpgRepository(
      * reason is saved on [EpgStateEntity.error] (never with the URL in it).
      */
     suspend fun update(sourceId: Long): Unit = withContext(Dispatchers.IO) {
-        val source = sourceDao.get(sourceId) ?: return@withContext
+        val source = sourceDao.get(sourceId)?.takeUnless { it.hidden } ?: return@withContext
         val url = guideUrl(source) ?: return@withContext
         val host = UrlRedaction.hostOnly(url)
         val batch = System.currentTimeMillis()
