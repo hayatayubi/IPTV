@@ -27,6 +27,9 @@ data class SourceEntity(
     val generation: Int = 0,
     /** Hidden playlists keep their data but show nowhere (Live, Home, guide). defaultValue lets Room add the column to v3 rows. */
     @ColumnInfo(defaultValue = "0") val hidden: Boolean = false,
+    /** Like [generation], for the movie and series lists (Xtream only). 0 = never loaded. */
+    @ColumnInfo(defaultValue = "0") val vodGeneration: Int = 0,
+    val vodRefreshed: Long? = null,
 )
 
 /** Playlist data only. User state (favourites, later order/hidden) lives in its own tables, keyed on stableKey. */

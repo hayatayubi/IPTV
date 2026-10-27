@@ -25,7 +25,17 @@ import com.hayat.lumen.ui.guide.GuideSettingsScreen
 import com.hayat.lumen.ui.home.HomeScreen
 import com.hayat.lumen.ui.live.LiveScreen
 import com.hayat.lumen.ui.player.PlayerScreen
+import com.hayat.lumen.data.db.Poster
+import com.hayat.lumen.data.db.VodCategoryRow
+import com.hayat.lumen.data.db.VodKind
+import com.hayat.lumen.ui.components.Tab
 import com.hayat.lumen.ui.theme.LumenColors
+import com.hayat.lumen.ui.vod.MovieDetailScreen
+import com.hayat.lumen.ui.vod.SeriesDetailScreen
+import com.hayat.lumen.ui.vod.VodBrowseScreen
+import com.hayat.lumen.ui.vod.VodCategoryScreen
+import com.hayat.lumen.ui.vod.VodPlayerScreen
+import com.hayat.lumen.ui.vod.VodSearchScreen
 import com.hayat.lumen.ui.theme.LumenMotion
 
 /** Navigation destinations. The back stack is just a list of these. */
@@ -39,6 +49,22 @@ data class PlayerRoute(val channelId: Long, val inFavourites: Boolean = false) :
 data object GuideRoute : Route
 data object GuideSettingsRoute : Route
 data object ManageCategoriesRoute : Route
+/** The Movies and Series tabs. They sit right above Home in the back stack, so Back returns to Live TV. */
+data object MoviesTabRoute : Route
+data object SeriesTabRoute : Route
+/** "See all" for one category. */
+data class VodCategoryRoute(val row: VodCategoryRow) : Route
+data object VodSearchRoute : Route
+data class MovieDetailRoute(val sourceId: Long, val streamId: String) : Route
+data class SeriesDetailRoute(val sourceId: Long, val seriesId: String) : Route
+/** A film ([VodKind.MOVIE], [itemId] = stream id) or an episode ([VodKind.SERIES], [itemId] = episode id). */
+data class VodPlayerRoute(
+    val sourceId: Long,
+    val kind: VodKind,
+    val itemId: String,
+    val seriesId: String? = null,
+    val startOver: Boolean = false,
+) : Route
 
 /**
  * App navigation. Like SwiftUI's NavigationStack(path:), the back stack is a list we
@@ -61,6 +87,21 @@ fun LumenRoot(onExit: () -> Unit) {
     val backStack = remember { mutableStateListOf(first) }
     val fade: () -> ContentTransform = { fadeIn(LumenMotion.focus()) togetherWith fadeOut(LumenMotion.focus()) }
 
+    // Tabs swap the screen above Home rather than stacking up, like a tab bar.
+    val onTab: (Tab) -> Unit = { tab ->
+        backStack.removeAll { it == MoviesTabRoute || it == SeriesTabRoute }
+        when (tab) {
+            Tab.LIVE -> Unit
+            Tab.MOVIES -> backStack.add(MoviesTabRoute)
+            Tab.SERIES -> backStack.add(SeriesTabRoute)
+        }
+    }
+    val openPoster: (Poster) -> Unit = { p ->
+        backStack.add(
+            if (p.kind == VodKind.MOVIE) MovieDetailRoute(p.sourceId, p.itemId) else SeriesDetailRoute(p.sourceId, p.itemId),
+        )
+    }
+
     NavDisplay(
         backStack = backStack,
         modifier = Modifier.background(LumenColors.Background),
@@ -78,6 +119,7 @@ fun LumenRoot(onExit: () -> Unit) {
             entry<AddSourceRoute> {
                 AddSourceScreen(onAdded = {
                     container.epg.updateStaleInBackground() // load the new playlist's guide
+                    container.vod.refreshStaleInBackground() // and its films and series
                     // Replace "Add" with Home, then open Live on top: there are no favourites yet.
                     // Back from Live goes to Home; Back from Home exits.
                     backStack.add(HomeRoute)
@@ -90,6 +132,7 @@ fun LumenRoot(onExit: () -> Unit) {
                     onPlay = { backStack.add(PlayerRoute(it, inFavourites = true)) },
                     onBrowse = { backStack.add(LiveRoute) },
                     onOpenGuide = { backStack.add(GuideRoute) },
+                    onTab = onTab,
                 )
             }
             entry<LiveRoute> {
@@ -113,6 +156,47 @@ fun LumenRoot(onExit: () -> Unit) {
             }
             entry<ManageCategoriesRoute> {
                 ManageCategoriesScreen()
+            }
+            entry<MoviesTabRoute> {
+                VodBrowseScreen(
+                    kind = VodKind.MOVIE,
+                    onTab = onTab,
+                    onOpen = openPoster,
+                    onSeeAll = { backStack.add(VodCategoryRoute(it)) },
+                    onSearch = { backStack.add(VodSearchRoute) },
+                )
+            }
+            entry<SeriesTabRoute> {
+                VodBrowseScreen(
+                    kind = VodKind.SERIES,
+                    onTab = onTab,
+                    onOpen = openPoster,
+                    onSeeAll = { backStack.add(VodCategoryRoute(it)) },
+                    onSearch = { backStack.add(VodSearchRoute) },
+                )
+            }
+            entry<VodCategoryRoute> { route ->
+                VodCategoryScreen(
+                    row = route.row,
+                    onOpen = openPoster,
+                    onHidden = { backStack.removeAt(backStack.lastIndex) },
+                )
+            }
+            entry<VodSearchRoute> {
+                VodSearchScreen(onOpen = openPoster)
+            }
+            entry<MovieDetailRoute> { route ->
+                MovieDetailScreen(route.sourceId, route.streamId, onPlay = { startOver ->
+                    backStack.add(VodPlayerRoute(route.sourceId, VodKind.MOVIE, route.streamId, startOver = startOver))
+                })
+            }
+            entry<SeriesDetailRoute> { route ->
+                SeriesDetailScreen(route.sourceId, route.seriesId, onPlay = { episodeId ->
+                    backStack.add(VodPlayerRoute(route.sourceId, VodKind.SERIES, episodeId, seriesId = route.seriesId))
+                })
+            }
+            entry<VodPlayerRoute> { route ->
+                VodPlayerScreen(route.sourceId, route.kind, route.itemId, route.seriesId, route.startOver)
             }
         },
     )

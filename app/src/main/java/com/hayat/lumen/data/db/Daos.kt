@@ -15,6 +15,9 @@ interface SourceDao {
     @Query("SELECT * FROM sources ORDER BY id")
     fun observeAll(): Flow<List<SourceEntity>>
 
+    @Query("SELECT * FROM sources ORDER BY id")
+    suspend fun all(): List<SourceEntity>
+
     @Query("SELECT COUNT(*) FROM sources")
     suspend fun count(): Int
 

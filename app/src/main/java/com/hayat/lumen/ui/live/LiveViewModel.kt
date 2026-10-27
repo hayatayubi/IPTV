@@ -3,6 +3,7 @@ package com.hayat.lumen.ui.live
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.hayat.lumen.data.ImportException
+import com.hayat.lumen.data.vod.VodRepository
 import com.hayat.lumen.data.LiveRepository
 import com.hayat.lumen.data.db.ChannelRow
 import com.hayat.lumen.data.db.GroupRow
@@ -34,7 +35,11 @@ sealed interface RefreshState {
 }
 
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
-class LiveViewModel(private val repo: LiveRepository, private val epg: EpgRepository) : ViewModel() {
+class LiveViewModel(
+    private val repo: LiveRepository,
+    private val epg: EpgRepository,
+    private val vod: VodRepository,
+) : ViewModel() {
 
     val groups: StateFlow<List<GroupRow>> =
         repo.groups.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -116,6 +121,7 @@ class LiveViewModel(private val repo: LiveRepository, private val epg: EpgReposi
                 for (source in repo.sources.first().filterNot { it.hidden }) {
                     repo.refresh(source.id) { _refresh.value = RefreshState.Running(it) }
                     epg.updateInBackground(source.id)
+                    vod.refreshInBackground(source.id)
                 }
                 _refresh.value = RefreshState.Idle
             } catch (e: CancellationException) {

@@ -122,6 +122,14 @@ class LiveRepository(
         db.epg().deleteState(sourceId)
         favouriteDao.removeAllOf(sourceId)
         hiddenDao.removeAllOf(sourceId)
+        db.vod().run {
+            deleteAllCategories(sourceId)
+            deleteAllMovies(sourceId)
+            deleteAllSeries(sourceId)
+            deleteAllProgress(sourceId)
+            deleteMyList(sourceId)
+            deleteHiddenCategories(sourceId)
+        }
         sourceDao.delete(sourceId)
     }
 
