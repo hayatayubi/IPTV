@@ -22,11 +22,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.ColorUtils
@@ -46,7 +48,8 @@ import kotlinx.coroutines.withContext
  * Channel artwork that fills its box edge to edge, Apple TV style: the background is the
  * logo's own colour, so a logo printed on a solid block (BBC One's red square) blends into
  * one solid tile, and a transparent logo sits on a deep wash of its main colour. Shows a
- * monogram on a muted tile while the logo loads or if there isn't one.
+ * monogram on a muted tile while the logo loads or if there isn't one. The main UK channels
+ * use built-in artwork instead ([BrandLogos]).
  *
  * [logoFraction] is how much of the box's height the logo may use.
  */
@@ -55,9 +58,14 @@ fun ChannelArt(
     name: String,
     logoUrl: String?,
     modifier: Modifier = Modifier,
-    logoFraction: Float = 0.56f,
+    logoFraction: Float = DEFAULT_LOGO_FRACTION,
     onTint: (Color) -> Unit = {},
 ) {
+    val brand = remember(name) { BrandLogos.forName(name) }
+    if (brand != null) {
+        BrandTile(brand, name, modifier, logoFraction, onTint)
+        return
+    }
     val art = rememberLogoArt(logoUrl)
     val base by animateColorAsState(art?.tint?.background ?: LumenColors.Surface, label = "artBg")
     LaunchedEffect(art) { art?.let { onTint(it.tint.background) } }
@@ -82,6 +90,31 @@ fun ChannelArt(
         }
     }
 }
+
+/** Built-in artwork for a main channel: its brand colour edge to edge, with a clean logo. */
+@Composable
+private fun BrandTile(brand: Brand, name: String, modifier: Modifier, logoFraction: Float, onTint: (Color) -> Unit) {
+    LaunchedEffect(brand) { onTint(brand.tile) }
+    val base = brand.tile
+    BoxWithConstraints(
+        modifier.background(
+            Brush.verticalGradient(listOf(lerp(base, Color.White, 0.1f), base, lerp(base, Color.Black, 0.15f))),
+        ),
+        contentAlignment = Alignment.Center,
+    ) {
+        // Small tiles (list rows) get relatively bigger logos than the large cards.
+        val fraction = (brand.logoFraction + (logoFraction - DEFAULT_LOGO_FRACTION)).coerceAtMost(0.8f)
+        Image(
+            painter = painterResource(brand.logo),
+            contentDescription = name,
+            contentScale = ContentScale.Fit,
+            colorFilter = brand.logoTint?.let { ColorFilter.tint(it) },
+            modifier = Modifier.size(width = maxWidth * 0.74f, height = maxHeight * fraction),
+        )
+    }
+}
+
+private const val DEFAULT_LOGO_FRACTION = 0.56f
 
 /** A small rounded logo tile for list rows and the player overlay. */
 @Composable

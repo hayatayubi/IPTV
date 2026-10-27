@@ -80,6 +80,11 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
   computed once per URL from a 24×24 sample (bitmaps loaded with `allowHardware(false)`, size 480).
   `LumenCard`: 16 dp corners, focus = 1.1× lift + dark shadow + one light sheen sweep, no dimming.
   Home: the focused favourite is the hero (clean name, quality tag, now/next) over a wash of its colour; cards below.
+- **Built-in brand tiles** (`ui/components/BrandLogos.kt`): the main BBC, ITV, Channel 4 family and Sky Sports channels
+  ignore the provider's logo and show a bundled logo (`res/drawable-nodpi/logo_*.png`, from tv-logo/tv-logos, see
+  `third_party/tv-logos`) on a solid brand-colour tile. Matched by cleaned name with regexes (tests in `BrandLogosTest`).
+- **Home layout**: hero on top, favourites in a 4-column grid below (two rows visible, so 8 favourites without scrolling).
+  Cards have no label underneath: the hero shows the focused channel's name.
 - **Display names**: `util/ChannelNames.display()` strips country prefixes, quality tags (→ one "4K"/"HD" chip) and
   symbols, and title-cases all-caps names (keeping known acronyms). Display only: stored names never change.
 - **Guide grid** (`ui/guide/GuideScreen.kt`): one focusable box handles the D-pad (not one focusable per cell), keeping an

@@ -8,20 +8,23 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -99,7 +102,7 @@ fun HomeScreen(onPlay: (channelId: Long) -> Unit, onBrowse: () -> Unit, onOpenGu
     // Each card reports its logo's colour; the focused one tints the screen behind the hero.
     val tints = remember { mutableStateMapOf<Long, Color>() }
 
-    val rowState = rememberLazyListState()
+    val gridState = rememberLazyGridState()
     val cardFocus = remember { FocusRequester() }
     val buttonFocus = remember { FocusRequester() }
     // Coming back from the player: focus the card of the channel that was playing.
@@ -142,8 +145,16 @@ fun HomeScreen(onPlay: (channelId: Long) -> Unit, onBrowse: () -> Unit, onOpenGu
                     "Favourites",
                     style = MaterialTheme.typography.titleLarge,
                     color = LumenColors.TextSecondary,
-                    modifier = Modifier.weight(1f),
                 )
+                if (list.isNotEmpty()) {
+                    Text(
+                        "Hold OK to remove",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = LumenColors.TextTertiary,
+                        modifier = Modifier.padding(start = 16.dp, top = 4.dp),
+                    )
+                }
+                Spacer(Modifier.weight(1f))
                 LumenButton(text = "All channels", onClick = onBrowse, modifier = Modifier.focusRequester(buttonFocus))
                 Spacer(Modifier.width(12.dp))
                 LumenButton(text = "TV guide", onClick = onOpenGuide)
@@ -160,44 +171,44 @@ fun HomeScreen(onPlay: (channelId: Long) -> Unit, onBrowse: () -> Unit, onOpenGu
                 )
             } else {
                 Hero(hero, hero?.let { guide[it.id] }, Modifier.weight(1f).fillMaxWidth())
-                LazyRow(
-                    state = rowState,
-                    // focusRestorer: coming back down from the buttons lands on the last focused card.
-                    modifier = Modifier.focusRestorer(),
-                    // Room around the cards for their focus lift and shadow.
-                    contentPadding = PaddingValues(vertical = 24.dp, horizontal = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(40.dp),
-                ) {
-                    itemsIndexed(list, key = { _, c -> "${c.sourceId}/${c.stableKey}" }) { index, channel ->
-                        val previewing = preview.channelId == channel.id
-                        FavouriteCard(
-                            channel = channel,
-                            now = guide[channel.id]?.now,
-                            player = if (previewing) preview.player else null,
-                            live = previewing && preview.showing,
-                            focused = focusedId == channel.id,
-                            onTint = { tints[channel.id] = it },
-                            onClick = {
-                                preview.handOver()
-                                container.lastChannelId.value = channel.id
-                                onPlay(channel.id)
-                            },
-                            onLongClick = { vm.remove(channel) },
-                            modifier = Modifier
-                                .then(if (index == focusIndex) Modifier.focusRequester(cardFocus) else Modifier)
-                                .onFocusChanged {
-                                    if (it.isFocused) focusedId = channel.id
-                                    else if (focusedId == channel.id) focusedId = null
+                // Four across, so up to eight favourites show at once; more than that scroll.
+                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    val cardWidth = (maxWidth - GridPadding * 2 - GridSpacing * (GridColumns - 1)) / GridColumns
+                    val twoRows = cardWidth * 9 / 16 * 2 + GridSpacing + GridPadding * 2
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(GridColumns),
+                        state = gridState,
+                        // focusRestorer: coming back down from the buttons lands on the last focused card.
+                        modifier = Modifier.fillMaxWidth().heightIn(max = twoRows).focusRestorer(),
+                        // Room around the cards for their focus lift and shadow.
+                        contentPadding = PaddingValues(GridPadding),
+                        horizontalArrangement = Arrangement.spacedBy(GridSpacing),
+                        verticalArrangement = Arrangement.spacedBy(GridSpacing),
+                    ) {
+                        itemsIndexed(list, key = { _, c -> "${c.sourceId}/${c.stableKey}" }) { index, channel ->
+                            val previewing = preview.channelId == channel.id
+                            FavouriteCard(
+                                channel = channel,
+                                now = guide[channel.id]?.now,
+                                player = if (previewing) preview.player else null,
+                                live = previewing && preview.showing,
+                                onTint = { tints[channel.id] = it },
+                                onClick = {
+                                    preview.handOver()
+                                    container.lastChannelId.value = channel.id
+                                    onPlay(channel.id)
                                 },
-                        )
+                                onLongClick = { vm.remove(channel) },
+                                modifier = Modifier
+                                    .then(if (index == focusIndex) Modifier.focusRequester(cardFocus) else Modifier)
+                                    .onFocusChanged {
+                                        if (it.isFocused) focusedId = channel.id
+                                        else if (focusedId == channel.id) focusedId = null
+                                    },
+                            )
+                        }
                     }
                 }
-                Text(
-                    "Hold OK to remove a favourite",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = LumenColors.TextTertiary,
-                    modifier = Modifier.padding(start = 8.dp),
-                )
             }
         }
     }
@@ -206,7 +217,7 @@ fun HomeScreen(onPlay: (channelId: Long) -> Unit, onBrowse: () -> Unit, onOpenGu
     LaunchedEffect(list.isEmpty()) {
         if (initialFocusDone) return@LaunchedEffect
         if (list.isNotEmpty()) {
-            rowState.scrollToItem(focusIndex)
+            gridState.scrollToItem(focusIndex)
             withFrameNanos { } // let the scrolled-to card compose before focusing it
             initialFocusDone = runCatching { cardFocus.requestFocus() }.isSuccess
         }
@@ -271,9 +282,14 @@ private fun Hero(channel: FavouriteRow?, nowNext: NowNext?, modifier: Modifier =
     }
 }
 
-private val CardWidth = 320.dp
-private val CardHeight = 180.dp
+private const val GridColumns = 4
+private val GridSpacing = 24.dp
+private val GridPadding = 16.dp
 
+/**
+ * One favourite: its artwork edge to edge (the name and what's on are in the hero above),
+ * with a progress line for the current programme along the bottom.
+ */
 @OptIn(UnstableApi::class)
 @Composable
 private fun FavouriteCard(
@@ -281,7 +297,6 @@ private fun FavouriteCard(
     now: Programme?,
     player: ExoPlayer?,
     live: Boolean,
-    focused: Boolean,
     onTint: (Color) -> Unit,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
@@ -289,51 +304,39 @@ private fun FavouriteCard(
 ) {
     // Logo fades out once the preview's first frame is on screen, revealing the video under it.
     val artAlpha by animateFloatAsState(if (live) 0f else 1f, tween(400), label = "art")
-    val name = remember(channel.name) { ChannelNames.title(channel.name) }
-    Column(Modifier.width(CardWidth)) {
-        LumenCard(onClick = onClick, onLongClick = onLongClick, modifier = modifier.size(CardWidth, CardHeight)) {
-            Box(Modifier.fillMaxSize()) {
-                if (player != null) {
-                    // TextureView, not the default SurfaceView: a SurfaceView ignores the card's
-                    // focus scale and rounded clip. Fine for one small preview at a time.
-                    ContentFrame(
-                        player = player,
-                        modifier = Modifier.fillMaxSize(),
-                        surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
-                        contentScale = ContentScale.Crop,
-                    )
-                }
-                if (artAlpha > 0f) {
-                    ChannelArt(
-                        name = channel.name,
-                        logoUrl = channel.logoUrl,
-                        onTint = onTint,
-                        modifier = Modifier.fillMaxSize().graphicsLayer { alpha = artAlpha },
-                    )
-                }
-                if (live) LiveBadge(Modifier.align(Alignment.TopStart).padding(12.dp))
-                // How far through the current programme, along the bottom edge like Up Next.
-                if (now != null) {
-                    ProgrammeProgress(
-                        now.progress(System.currentTimeMillis()),
-                        color = Color.White,
-                        height = 4.dp,
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                    )
-                }
+    LumenCard(onClick = onClick, onLongClick = onLongClick, modifier = modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
+        Box(Modifier.fillMaxSize()) {
+            if (player != null) {
+                // TextureView, not the default SurfaceView: a SurfaceView ignores the card's
+                // focus scale and rounded clip. Fine for one small preview at a time.
+                ContentFrame(
+                    player = player,
+                    modifier = Modifier.fillMaxSize(),
+                    surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
+                    contentScale = ContentScale.Crop,
+                )
+            }
+            if (artAlpha > 0f) {
+                ChannelArt(
+                    name = channel.name,
+                    logoUrl = channel.logoUrl,
+                    onTint = onTint,
+                    modifier = Modifier.fillMaxSize().graphicsLayer { alpha = artAlpha },
+                )
+            }
+            if (live) LiveBadge(Modifier.align(Alignment.TopStart).padding(8.dp))
+            // How far through the current programme, along the bottom edge like Up Next.
+            if (now != null) {
+                ProgrammeProgress(
+                    now.progress(System.currentTimeMillis()),
+                    color = Color.White,
+                    height = 3.dp,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                )
             }
         }
-        Spacer(Modifier.height(14.dp))
-        Text(
-            name,
-            style = MaterialTheme.typography.titleSmall,
-            color = if (focused) LumenColors.TextPrimary else LumenColors.TextSecondary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 4.dp),
-        )
     }
 }
 
