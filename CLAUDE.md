@@ -13,6 +13,10 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
   - Hold OK on a channel in Live to favourite it (★). Launch opens **Home**: favourites as large 16:9 cards with the logo
     (Coil), and after 1.2 s on a card a muted live preview plays inside it. OK opens the player, zapping through favourites.
     Hold OK on a card removes it. "All channels" opens Live.
+- **TV guide grid.** Built (branch `claude/project-thread-0zjubh`, on top of favourites). Not yet checked on the TV.
+  - "TV guide" on Home and Live opens a time grid: channels down, from the last half hour to 24 h ahead across.
+    Left/Right = programmes (the window follows), Up/Down = channels at the same time, CH+/CH- = 5 rows, OK = play.
+    Top button switches favourites/groups; "Guide settings" opens the old guide settings screen.
   - Not in Phase 1: Left sidebar and Right mini guide in the player (Phases 3/6), logos (Phase 4), settings/source editing (Phase 6).
 
 ## Decisions
@@ -71,6 +75,10 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
   Home: the focused favourite is the hero (clean name, quality tag, now/next) over a wash of its colour; cards below.
 - **Display names**: `util/ChannelNames.display()` strips country prefixes, quality tags (→ one "4K"/"HD" chip) and
   symbols, and title-cases all-caps names (keeping known acronyms). Display only: stored names never change.
+- **Guide grid** (`ui/guide/GuideScreen.kt`): one focusable box handles the D-pad (not one focusable per cell), keeping an
+  `anchor` time so Up/Down stays at the same time. Cells are placed with `offset { }` from an animated window position, so
+  moving the window relayouts without recomposing. Rows are slots from `GuideSlots.build` (gaps = "No guide info", cut at
+  half hours). Schedules load via `EpgRepository.schedule` for the rows on screen ± a margin, in blocks of 20 rows.
 - **Player** (`playback/PlayerHolder.kt`): one ExoPlayer, created lazily, released in `MainActivity.onStop`.
   Starts after 1 s of buffer. OkHttp data source (follows http→https redirects).
   Zapping is debounced 350 ms, and the old stream is stopped at once (providers often allow 1 connection).

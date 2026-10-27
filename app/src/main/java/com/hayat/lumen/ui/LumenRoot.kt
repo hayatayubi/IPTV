@@ -19,6 +19,7 @@ import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import com.hayat.lumen.LocalAppContainer
 import com.hayat.lumen.ui.addsource.AddSourceScreen
+import com.hayat.lumen.ui.guide.GuideScreen
 import com.hayat.lumen.ui.guide.GuideSettingsScreen
 import com.hayat.lumen.ui.home.HomeScreen
 import com.hayat.lumen.ui.live.LiveScreen
@@ -33,6 +34,8 @@ data object HomeRoute : Route
 data object LiveRoute : Route
 /** [inFavourites]: Up/Down zaps through favourites instead of the channel's group. */
 data class PlayerRoute(val channelId: Long, val inFavourites: Boolean = false) : Route
+/** The TV guide grid. */
+data object GuideRoute : Route
 data object GuideSettingsRoute : Route
 
 /**
@@ -84,12 +87,19 @@ fun LumenRoot(onExit: () -> Unit) {
                 HomeScreen(
                     onPlay = { backStack.add(PlayerRoute(it, inFavourites = true)) },
                     onBrowse = { backStack.add(LiveRoute) },
+                    onOpenGuide = { backStack.add(GuideRoute) },
                 )
             }
             entry<LiveRoute> {
                 LiveScreen(
                     onPlay = { backStack.add(PlayerRoute(it)) },
-                    onOpenGuide = { backStack.add(GuideSettingsRoute) },
+                    onOpenGuide = { backStack.add(GuideRoute) },
+                )
+            }
+            entry<GuideRoute> {
+                GuideScreen(
+                    onPlay = { id, inFavourites -> backStack.add(PlayerRoute(id, inFavourites)) },
+                    onOpenSettings = { backStack.add(GuideSettingsRoute) },
                 )
             }
             entry<PlayerRoute> { route ->

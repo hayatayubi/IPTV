@@ -67,7 +67,8 @@ data class NowNext(val now: Programme?, val next: Programme?) {
  * Updating streams the XMLTV file and keeps only programmes for this playlist's channels,
  * from 2 hours ago to 36 hours ahead, so even a huge guide is a few MB in the database.
  *
- * Other screens read now/next through [nowNextForGroup], [nowNextForChannels] and [nowNext].
+ * Other screens read now/next through [nowNextForGroup], [nowNextForChannels] and [nowNext];
+ * the guide grid reads whole schedules through [schedule].
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class EpgRepository(
@@ -233,12 +234,16 @@ class EpgRepository(
 
     fun nowNext(channelId: Long): Flow<NowNext?> = nowNextForChannels(listOf(channelId)).map { it[channelId] }
 
-    private suspend fun shortEpg(channelIds: List<Long>, now: Long): Map<Long, NowNext> = withContext(Dispatchers.IO) {
-        val out = HashMap<Long, NowNext>()
+    private suspend fun shortEpg(channelIds: List<Long>, now: Long): Map<Long, NowNext> =
+        shortListings(channelIds, now).mapNotNull { (id, programmes) -> NowNext.from(programmes, now)?.let { id to it } }.toMap()
+
+    /** Xtream `get_short_epg` listings per channel, sorted by start (empty when there are none). */
+    private suspend fun shortListings(channelIds: List<Long>, now: Long): Map<Long, List<Programme>> = withContext(Dispatchers.IO) {
+        val out = HashMap<Long, List<Programme>>()
         val logins = HashMap<Long, XtreamLogin?>()
         for (id in channelIds) {
             val cached = shortEpgCache[id]?.takeIf { it.isFresh(now) }
-            val programmes = cached?.programmes ?: run {
+            out[id] = cached?.programmes ?: run {
                 val channel = channelDao.get(id) ?: return@run emptyList()
                 val login = logins.getOrPut(channel.sourceId) {
                     sourceDao.get(channel.sourceId)?.takeIf { it.type == SourceType.XTREAM }?.let(::xtreamLogin)
@@ -252,9 +257,29 @@ class EpgRepository(
                 shortEpgCache[id] = CachedListings(now, listings)
                 listings
             }
-            NowNext.from(programmes, now)?.let { out[id] = it }
         }
         out
+    }
+
+    /**
+     * Everything known for [channelIds] between [from] and [until], per channel, oldest first: the
+     * guide grid. Like [nowNextForChannels], channels the stored guide doesn't cover fall back to
+     * Xtream's `get_short_epg` (only the next few programmes), for up to [FALLBACK_MAX] of them.
+     * Keep [channelIds] to a screenful or so: they become one SQL `IN (…)`.
+     */
+    fun schedule(channelIds: List<Long>, from: Long, until: Long): Flow<Map<Long, List<Programme>>> {
+        if (channelIds.isEmpty()) return flowOf(emptyMap())
+        return minuteTicker()
+            .flatMapLatest { now ->
+                epgDao.observeForChannels(channelIds, from, until).map { rows ->
+                    now to rows.groupBy({ it.channelId }) { Programme(it.title, it.description, it.start, it.stop) }
+                }
+            }
+            .mapLatest { (now, fromGuide) ->
+                val missing = channelIds.filter { it !in fromGuide }.take(FALLBACK_MAX)
+                if (missing.isEmpty()) fromGuide
+                else fromGuide + shortListings(missing, now).filterValues { it.isNotEmpty() }
+            }
     }
 
     /** Cached listings are reused until the current programme ends, for at most 30 min (15 if empty). */
