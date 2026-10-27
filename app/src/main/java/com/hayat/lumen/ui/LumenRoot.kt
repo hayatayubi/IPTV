@@ -19,6 +19,7 @@ import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import com.hayat.lumen.LocalAppContainer
 import com.hayat.lumen.ui.addsource.AddSourceScreen
+import com.hayat.lumen.ui.categories.ManageCategoriesScreen
 import com.hayat.lumen.ui.guide.GuideSettingsScreen
 import com.hayat.lumen.ui.home.HomeScreen
 import com.hayat.lumen.ui.live.LiveScreen
@@ -34,6 +35,7 @@ data object LiveRoute : Route
 /** [inFavourites]: Up/Down zaps through favourites instead of the channel's group. */
 data class PlayerRoute(val channelId: Long, val inFavourites: Boolean = false) : Route
 data object GuideSettingsRoute : Route
+data object ManageCategoriesRoute : Route
 
 /**
  * App navigation. Like SwiftUI's NavigationStack(path:), the back stack is a list we
@@ -90,6 +92,7 @@ fun LumenRoot(onExit: () -> Unit) {
                 LiveScreen(
                     onPlay = { backStack.add(PlayerRoute(it)) },
                     onOpenGuide = { backStack.add(GuideSettingsRoute) },
+                    onManageCategories = { backStack.add(ManageCategoriesRoute) },
                 )
             }
             entry<PlayerRoute> { route ->
@@ -97,6 +100,9 @@ fun LumenRoot(onExit: () -> Unit) {
             }
             entry<GuideSettingsRoute> {
                 GuideSettingsScreen()
+            }
+            entry<ManageCategoriesRoute> {
+                ManageCategoriesScreen()
             }
         },
     )

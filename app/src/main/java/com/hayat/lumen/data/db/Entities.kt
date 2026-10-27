@@ -1,5 +1,6 @@
 package com.hayat.lumen.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -24,6 +25,8 @@ data class SourceEntity(
     val epgUrl: String? = null,
     val lastRefreshed: Long? = null,
     val generation: Int = 0,
+    /** Hidden playlists keep their data but show nowhere (Live, Home, guide). defaultValue lets Room add the column to v3 rows. */
+    @ColumnInfo(defaultValue = "0") val hidden: Boolean = false,
 )
 
 /** Playlist data only. User state (favourites, later order/hidden) lives in its own tables, keyed on stableKey. */
@@ -74,12 +77,30 @@ data class FavouriteEntity(
     val addedAt: Long,
 )
 
+/**
+ * A category the user hid from Live. Keyed on the group's name, not its row id, because
+ * group rows are rebuilt on every refresh. A hidden group that comes back after a refresh stays hidden.
+ */
+@Entity(tableName = "hidden_groups", primaryKeys = ["sourceId", "groupName"])
+data class HiddenGroupEntity(
+    val sourceId: Long,
+    val groupName: String,
+)
+
 /** Projection for the Live groups column. */
 data class GroupRow(
     val sourceId: Long,
     val sourceName: String,
     val name: String,
     val channelCount: Int,
+)
+
+/** Projection for Manage categories: every group of the current generation, hidden or not. */
+data class CategoryRow(
+    val sourceId: Long,
+    val name: String,
+    val channelCount: Int,
+    val hidden: Boolean,
 )
 
 /** Projection for channel lists: no stream URL, so 10k rows stay small. */

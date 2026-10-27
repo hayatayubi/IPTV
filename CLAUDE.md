@@ -13,6 +13,9 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
   - Hold OK on a channel in Live to favourite it (★). Launch opens **Home**: favourites as large 16:9 cards with the logo
     (Coil), and after 1.2 s on a card a muted live preview plays inside it. OK opens the player, zapping through favourites.
     Hold OK on a card removes it. "All channels" opens Live.
+- **Hide categories and playlists.** Built (branch `claude/project-thread-xcw5xx`, on top of favourites). Not yet checked on the TV.
+  - Hold OK on a category in Live to hide it. Live → **Categories** lists every category with a tick (OK toggles),
+    a search, and Show all / Hide all (acting on just the search matches). OK on a playlist row hides the whole playlist.
   - Not in Phase 1: Left sidebar and Right mini guide in the player (Phases 3/6), logos (Phase 4), settings/source editing (Phase 6).
 
 ## Decisions
@@ -58,6 +61,10 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
 - **Favourites**: `favourites` table (DB v3, auto-migration from v2; v2 is the guide tables), keyed `(sourceId, stableKey)`, ordered by `position`.
   Joined to the current generation's channels, so a favourite missing from the playlist hides and returns if it comes back.
   Removing a source deletes its favourites.
+- **Hidden** (DB v4, auto-migration from v3): `hidden_groups` keyed `(sourceId, groupName)` (survives refreshes, like
+  favourites) and `sources.hidden`. `ChannelDao.observeGroups` (Live, guide grid) leaves both out. Favourites in a hidden
+  category still show on Home; a hidden playlist hides its favourites, skips Refresh and guide updates. Guide imports skip
+  channels in hidden categories unless they're favourites; leaving Categories reloads the guide for anything shown again.
 - **Home preview** (`ui/home/HomeScreen.kt`): uses the one shared ExoPlayer (one decoder, one provider connection) on a
   TextureView (a SurfaceView ignores the card's focus scale and clip). OK on the previewed card hands the running stream to
   the player, so it starts without re-buffering. `PlayerHolder.acquire(owner)`/`stop(owner)`: stop only acts for the

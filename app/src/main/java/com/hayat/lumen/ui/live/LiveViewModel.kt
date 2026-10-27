@@ -10,6 +10,8 @@ import com.hayat.lumen.data.epg.EpgRepository
 import com.hayat.lumen.data.epg.NowNext
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -36,6 +38,11 @@ class LiveViewModel(private val repo: LiveRepository, private val epg: EpgReposi
 
     val groups: StateFlow<List<GroupRow>> =
         repo.groups.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** True when there are categories but all of them (or their playlists) are hidden. */
+    val everythingHidden: StateFlow<Boolean> = combine(repo.groups, repo.categories) { shown, all ->
+        shown.isEmpty() && all.isNotEmpty()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     private val picked = MutableStateFlow<GroupKey?>(null)
 
@@ -77,6 +84,26 @@ class LiveViewModel(private val repo: LiveRepository, private val epg: EpgReposi
         picked.value = GroupKey(group.sourceId, group.name)
     }
 
+    private val _notice = MutableStateFlow<String?>(null)
+    /** A short confirmation (e.g. after hiding a category), cleared after a few seconds. */
+    val notice: StateFlow<String?> = _notice
+    private var noticeJob: Job? = null
+
+    /** Hides [group] from Live. The group below it (or above, at the end) becomes the selected one. */
+    fun hide(group: GroupRow) {
+        val list = groups.value
+        val index = list.indexOfFirst { it.sourceId == group.sourceId && it.name == group.name }
+        val neighbour = list.getOrNull(index + 1) ?: list.getOrNull(index - 1)
+        picked.value = neighbour?.let { GroupKey(it.sourceId, it.name) }
+        viewModelScope.launch { repo.hideGroups(group.sourceId, listOf(group.name)) }
+        noticeJob?.cancel()
+        noticeJob = viewModelScope.launch {
+            _notice.value = "Hid “${group.name}”. Show it again in Categories."
+            delay(4_000)
+            _notice.value = null
+        }
+    }
+
     fun toggleFavourite(channelId: Long) {
         viewModelScope.launch { repo.toggleFavourite(channelId) }
     }
@@ -86,7 +113,7 @@ class LiveViewModel(private val repo: LiveRepository, private val epg: EpgReposi
         viewModelScope.launch {
             _refresh.value = RefreshState.Running(0)
             try {
-                for (source in repo.sources.first()) {
+                for (source in repo.sources.first().filterNot { it.hidden }) {
                     repo.refresh(source.id) { _refresh.value = RefreshState.Running(it) }
                     epg.updateInBackground(source.id)
                 }
