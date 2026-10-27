@@ -110,6 +110,7 @@ data class PlayableChannel(
     val streamUrl: String,
     val groupName: String,
     val playlistOrder: Int,
+    val logoUrl: String?,
 )
 
 /**

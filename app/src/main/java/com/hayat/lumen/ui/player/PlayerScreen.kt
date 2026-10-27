@@ -51,11 +51,13 @@ import androidx.tv.material3.Text
 import com.hayat.lumen.LocalAppContainer
 import com.hayat.lumen.data.epg.NowNext
 import com.hayat.lumen.playback.PlayerHolder
-import com.hayat.lumen.ui.components.Monogram
+import com.hayat.lumen.ui.components.ChannelLogo
+import com.hayat.lumen.ui.components.QualityTag
 import com.hayat.lumen.ui.components.ProgrammeProgress
 import com.hayat.lumen.ui.components.formatTime
 import com.hayat.lumen.ui.components.timeRange
 import com.hayat.lumen.ui.theme.LumenColors
+import com.hayat.lumen.util.ChannelNames
 import com.hayat.lumen.ui.theme.LumenMotion
 import com.hayat.lumen.ui.theme.SafeArea
 import kotlinx.coroutines.delay
@@ -215,14 +217,23 @@ private fun InfoOverlay(tuned: Tuned, nowNext: NowNext?, status: Status) {
             .padding(top = 96.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-            Monogram(channel.name, size = 72.dp)
+            ChannelLogo(channel.name, channel.logoUrl, size = 72.dp)
+            val name = remember(channel.name) { ChannelNames.display(channel.name) }
             Column(Modifier.weight(1f)) {
-                Text(
-                    listOfNotNull(channel.number?.toString(), channel.name).joinToString("   "),
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = LumenColors.TextPrimary,
-                    maxLines = 1,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    channel.number?.let {
+                        Text(it.toString(), style = MaterialTheme.typography.headlineMedium, color = LumenColors.TextSecondary)
+                    }
+                    Text(
+                        name.title,
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = LumenColors.TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    name.tags.forEach { QualityTag(it) }
+                }
                 val now = nowNext?.now
                 if (now == null) {
                     Text(

@@ -1,6 +1,8 @@
 package com.hayat.lumen.ui.home
 
 import androidx.annotation.OptIn
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -25,6 +28,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -35,6 +39,10 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
@@ -50,23 +58,29 @@ import androidx.media3.ui.compose.ContentFrame
 import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import coil3.compose.AsyncImage
 import com.hayat.lumen.LocalAppContainer
 import com.hayat.lumen.data.db.FavouriteRow
+import com.hayat.lumen.data.epg.NowNext
 import com.hayat.lumen.data.epg.Programme
 import com.hayat.lumen.playback.PlayerHolder
+import com.hayat.lumen.ui.components.ChannelArt
 import com.hayat.lumen.ui.components.LumenButton
 import com.hayat.lumen.ui.components.LumenCard
-import com.hayat.lumen.ui.components.Monogram
 import com.hayat.lumen.ui.components.ProgrammeProgress
+import com.hayat.lumen.ui.components.QualityTag
+import com.hayat.lumen.ui.components.formatTime
+import com.hayat.lumen.ui.components.timeRange
 import com.hayat.lumen.ui.theme.LumenColors
 import com.hayat.lumen.ui.theme.SafeArea
+import com.hayat.lumen.util.ChannelNames
 import kotlinx.coroutines.delay
 
 /**
- * The launch screen: favourite channels as large cards. Resting on a card for a moment
- * plays it muted inside the card; OK opens it full screen (zapping through favourites),
- * holding OK removes it. "All channels" opens Live.
+ * The launch screen, Apple TV style: the focused favourite fills the top of the screen
+ * (its name, what's on now and next, on a wash of the channel's colour), with the
+ * favourites as a row of cards below. Resting on a card for a moment plays it muted
+ * inside the card; OK opens it full screen (zapping through favourites), holding OK
+ * removes it. "All channels" opens Live.
  */
 @Composable
 fun HomeScreen(onPlay: (channelId: Long) -> Unit, onBrowse: () -> Unit) {
@@ -82,6 +96,8 @@ fun HomeScreen(onPlay: (channelId: Long) -> Unit, onBrowse: () -> Unit) {
 
     var focusedId by remember { mutableStateOf<Long?>(null) }
     val preview = rememberLivePreview(focusedId, vm::streamUrl)
+    // Each card reports its logo's colour; the focused one tints the screen behind the hero.
+    val tints = remember { mutableStateMapOf<Long, Color>() }
 
     val rowState = rememberLazyListState()
     val cardFocus = remember { FocusRequester() }
@@ -91,70 +107,96 @@ fun HomeScreen(onPlay: (channelId: Long) -> Unit, onBrowse: () -> Unit) {
     var initialFocusDone by remember { mutableStateOf(false) }
     val focusIndex = list.indexOfFirst { it.id == returnTo }.coerceAtLeast(0)
 
-    Column(
+    // The hero keeps showing the last focused card while focus is up on the buttons.
+    var heroId by remember { mutableStateOf(returnTo) }
+    LaunchedEffect(focusedId) { focusedId?.let { heroId = it } }
+    val hero = list.firstOrNull { it.id == heroId } ?: list.firstOrNull()
+    val wash by animateColorAsState(
+        hero?.let { tints[it.id] } ?: LumenColors.Background,
+        animationSpec = tween(600),
+        label = "wash",
+    )
+
+    Box(
         Modifier
             .fillMaxSize()
             .background(LumenColors.Background)
-            .padding(horizontal = SafeArea.Horizontal, vertical = SafeArea.Vertical),
+            .drawBehind {
+                // A soft glow of the channel's colour from the top left, fading into the background.
+                drawRect(
+                    Brush.radialGradient(
+                        listOf(wash.copy(alpha = 0.55f), wash.copy(alpha = 0.18f), Color.Transparent),
+                        center = Offset(size.width * 0.2f, 0f),
+                        radius = size.width * 0.75f,
+                    ),
+                )
+            },
     ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "Favourites",
-                style = MaterialTheme.typography.headlineLarge,
-                color = LumenColors.TextPrimary,
-                modifier = Modifier.weight(1f),
-            )
-            LumenButton(text = "All channels", onClick = onBrowse, modifier = Modifier.focusRequester(buttonFocus))
-        }
-
-        if (list.isEmpty()) {
-            Spacer(Modifier.height(96.dp))
-            Text("No favourites yet", style = MaterialTheme.typography.headlineSmall, color = LumenColors.TextPrimary)
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Open All channels, then hold OK on a channel to add it here.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = LumenColors.TextSecondary,
-            )
-        } else {
-            Spacer(Modifier.height(8.dp))
-            LazyRow(
-                state = rowState,
-                // focusRestorer: coming back up from the button lands on the last focused card.
-                modifier = Modifier.focusRestorer(),
-                // Room around the cards for their focus scale and glow.
-                contentPadding = PaddingValues(vertical = 24.dp, horizontal = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(32.dp),
-            ) {
-                itemsIndexed(list, key = { _, c -> "${c.sourceId}/${c.stableKey}" }) { index, channel ->
-                    val previewing = preview.channelId == channel.id
-                    FavouriteCard(
-                        channel = channel,
-                        now = guide[channel.id]?.now,
-                        player = if (previewing) preview.player else null,
-                        live = previewing && preview.showing,
-                        focused = focusedId == channel.id,
-                        onClick = {
-                            preview.handOver()
-                            container.lastChannelId.value = channel.id
-                            onPlay(channel.id)
-                        },
-                        onLongClick = { vm.remove(channel) },
-                        modifier = Modifier
-                            .then(if (index == focusIndex) Modifier.focusRequester(cardFocus) else Modifier)
-                            .onFocusChanged {
-                                if (it.isFocused) focusedId = channel.id
-                                else if (focusedId == channel.id) focusedId = null
-                            },
-                    )
-                }
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = SafeArea.Horizontal, vertical = SafeArea.Vertical),
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Favourites",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = LumenColors.TextSecondary,
+                    modifier = Modifier.weight(1f),
+                )
+                LumenButton(text = "All channels", onClick = onBrowse, modifier = Modifier.focusRequester(buttonFocus))
             }
-            Text(
-                "Hold OK to remove a favourite",
-                style = MaterialTheme.typography.bodyMedium,
-                color = LumenColors.TextTertiary,
-                modifier = Modifier.padding(start = 4.dp),
-            )
+
+            if (list.isEmpty()) {
+                Spacer(Modifier.height(96.dp))
+                Text("No favourites yet", style = MaterialTheme.typography.displaySmall, color = LumenColors.TextPrimary)
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "Open All channels, then hold OK on a channel to add it here.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = LumenColors.TextSecondary,
+                )
+            } else {
+                Hero(hero, hero?.let { guide[it.id] }, Modifier.weight(1f).fillMaxWidth())
+                LazyRow(
+                    state = rowState,
+                    // focusRestorer: coming back down from the buttons lands on the last focused card.
+                    modifier = Modifier.focusRestorer(),
+                    // Room around the cards for their focus lift and shadow.
+                    contentPadding = PaddingValues(vertical = 24.dp, horizontal = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(40.dp),
+                ) {
+                    itemsIndexed(list, key = { _, c -> "${c.sourceId}/${c.stableKey}" }) { index, channel ->
+                        val previewing = preview.channelId == channel.id
+                        FavouriteCard(
+                            channel = channel,
+                            now = guide[channel.id]?.now,
+                            player = if (previewing) preview.player else null,
+                            live = previewing && preview.showing,
+                            focused = focusedId == channel.id,
+                            onTint = { tints[channel.id] = it },
+                            onClick = {
+                                preview.handOver()
+                                container.lastChannelId.value = channel.id
+                                onPlay(channel.id)
+                            },
+                            onLongClick = { vm.remove(channel) },
+                            modifier = Modifier
+                                .then(if (index == focusIndex) Modifier.focusRequester(cardFocus) else Modifier)
+                                .onFocusChanged {
+                                    if (it.isFocused) focusedId = channel.id
+                                    else if (focusedId == channel.id) focusedId = null
+                                },
+                        )
+                    }
+                }
+                Text(
+                    "Hold OK to remove a favourite",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = LumenColors.TextTertiary,
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
         }
     }
 
@@ -170,6 +212,63 @@ fun HomeScreen(onPlay: (channelId: Long) -> Unit, onBrowse: () -> Unit) {
     }
 }
 
+/** The focused channel, large: its name, quality tag, and what's on now and next. */
+@Composable
+private fun Hero(channel: FavouriteRow?, nowNext: NowNext?, modifier: Modifier = Modifier) {
+    Box(modifier, contentAlignment = Alignment.BottomStart) {
+        // Crossfade so moving along the row feels like turning pages, not text flicker.
+        Crossfade(channel to nowNext, animationSpec = tween(250), label = "hero") { (shown, info) ->
+            if (shown == null) return@Crossfade
+            val name = remember(shown.name) { ChannelNames.display(shown.name) }
+            Column(Modifier.widthIn(max = 720.dp).padding(start = 8.dp, bottom = 8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text(
+                        name.title,
+                        style = MaterialTheme.typography.displaySmall,
+                        color = LumenColors.TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    name.tags.forEach { QualityTag(it) }
+                }
+                val now = info?.now
+                if (now != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            now.title,
+                            style = MaterialTheme.typography.titleLarge,
+                            color = LumenColors.TextPrimary.copy(alpha = 0.9f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        Text(now.timeRange(), style = MaterialTheme.typography.bodyLarge, color = LumenColors.TextSecondary)
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    ProgrammeProgress(
+                        now.progress(System.currentTimeMillis()),
+                        color = LumenColors.TextPrimary,
+                        modifier = Modifier.width(360.dp),
+                        height = 4.dp,
+                    )
+                }
+                info?.next?.let { next ->
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "Next   ${formatTime(next.start)}   ${next.title}",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = LumenColors.TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
 private val CardWidth = 320.dp
 private val CardHeight = 180.dp
 
@@ -181,12 +280,14 @@ private fun FavouriteCard(
     player: ExoPlayer?,
     live: Boolean,
     focused: Boolean,
+    onTint: (Color) -> Unit,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Logo fades out once the preview's first frame is on screen, revealing the video under it.
     val artAlpha by animateFloatAsState(if (live) 0f else 1f, tween(400), label = "art")
+    val name = remember(channel.name) { ChannelNames.title(channel.name) }
     Column(Modifier.width(CardWidth)) {
         LumenCard(onClick = onClick, onLongClick = onLongClick, modifier = modifier.size(CardWidth, CardHeight)) {
             Box(Modifier.fillMaxSize()) {
@@ -201,51 +302,36 @@ private fun FavouriteCard(
                     )
                 }
                 if (artAlpha > 0f) {
-                    ChannelArt(channel, Modifier.fillMaxSize().graphicsLayer { alpha = artAlpha })
+                    ChannelArt(
+                        name = channel.name,
+                        logoUrl = channel.logoUrl,
+                        onTint = onTint,
+                        modifier = Modifier.fillMaxSize().graphicsLayer { alpha = artAlpha },
+                    )
                 }
                 if (live) LiveBadge(Modifier.align(Alignment.TopStart).padding(12.dp))
+                // How far through the current programme, along the bottom edge like Up Next.
+                if (now != null) {
+                    ProgrammeProgress(
+                        now.progress(System.currentTimeMillis()),
+                        color = Color.White,
+                        height = 4.dp,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                    )
+                }
             }
         }
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(14.dp))
         Text(
-            listOfNotNull(channel.number?.toString(), channel.name).joinToString("  "),
-            style = MaterialTheme.typography.titleMedium,
+            name,
+            style = MaterialTheme.typography.titleSmall,
             color = if (focused) LumenColors.TextPrimary else LumenColors.TextSecondary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 4.dp),
         )
-        // What's on now, from the guide (when there is one for this channel).
-        if (now != null) {
-            val dim = if (focused) LumenColors.TextSecondary else LumenColors.TextTertiary
-            Spacer(Modifier.height(4.dp))
-            Text(
-                now.title,
-                style = MaterialTheme.typography.bodyMedium,
-                color = dim,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.height(8.dp))
-            ProgrammeProgress(now.progress(System.currentTimeMillis()), color = dim, modifier = Modifier.fillMaxWidth())
-        }
-    }
-}
-
-/** The channel logo, large and centred; a monogram while it loads or if there isn't one. */
-@Composable
-private fun ChannelArt(channel: FavouriteRow, modifier: Modifier = Modifier) {
-    var loaded by remember(channel.logoUrl) { mutableStateOf(false) }
-    Box(modifier.background(LumenColors.Surface), contentAlignment = Alignment.Center) {
-        if (!loaded) Monogram(channel.name, size = 96.dp)
-        if (!channel.logoUrl.isNullOrBlank()) {
-            AsyncImage(
-                model = channel.logoUrl,
-                contentDescription = channel.name,
-                contentScale = ContentScale.Fit,
-                onSuccess = { loaded = true },
-                modifier = Modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 32.dp),
-            )
-        }
     }
 }
 

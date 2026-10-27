@@ -71,7 +71,7 @@ interface ChannelDao {
 
     @Query(
         """
-        SELECT c.id, c.name, c.number, c.streamUrl, c.groupName, c.playlistOrder
+        SELECT c.id, c.name, c.number, c.streamUrl, c.groupName, c.playlistOrder, c.logoUrl
         FROM channels c JOIN sources s ON s.id = c.sourceId AND s.generation = c.generation
         WHERE c.sourceId = :sourceId AND c.groupName = :groupName
         ORDER BY c.playlistOrder
@@ -181,7 +181,7 @@ interface FavouriteDao {
 
     @Query(
         """
-        SELECT c.id, c.name, c.number, c.streamUrl, c.groupName, c.playlistOrder
+        SELECT c.id, c.name, c.number, c.streamUrl, c.groupName, c.playlistOrder, c.logoUrl
         FROM favourites f
         JOIN sources s ON s.id = f.sourceId
         JOIN channels c ON c.sourceId = f.sourceId AND c.stableKey = f.stableKey AND c.generation = s.generation

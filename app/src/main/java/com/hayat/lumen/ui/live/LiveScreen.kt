@@ -43,10 +43,12 @@ import com.hayat.lumen.data.db.ChannelRow
 import com.hayat.lumen.data.epg.NowNext
 import com.hayat.lumen.ui.components.LumenButton
 import com.hayat.lumen.ui.components.LumenListItem
-import com.hayat.lumen.ui.components.Monogram
+import com.hayat.lumen.ui.components.ChannelLogo
+import com.hayat.lumen.ui.components.QualityTag
 import com.hayat.lumen.ui.components.ProgrammeProgress
 import com.hayat.lumen.ui.components.formatTime
 import com.hayat.lumen.ui.theme.LumenColors
+import com.hayat.lumen.util.ChannelNames
 import com.hayat.lumen.ui.theme.SafeArea
 import java.text.NumberFormat
 
@@ -208,17 +210,22 @@ private fun ChannelItem(
             style = MaterialTheme.typography.labelLarge,
             modifier = Modifier.width(48.dp),
         )
-        Monogram(channel.name, size = 44.dp)
+        ChannelLogo(channel.name, channel.logoUrl, size = 40.dp)
         // LocalContentColor flips to dark when the row is focused, so guide text follows it
         // (dimmed) instead of using a fixed grey that would vanish on the light focused row.
         val dim = LocalContentColor.current.copy(alpha = 0.7f)
+        val name = remember(channel.name) { ChannelNames.display(channel.name) }
         Column(Modifier.weight(1f)) {
-            Text(
-                channel.name,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    name.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                name.tags.forEach { QualityTag(it, color = LocalContentColor.current.copy(alpha = 0.7f)) }
+            }
             nowNext?.now?.let { now ->
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(

@@ -62,7 +62,15 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
   TextureView (a SurfaceView ignores the card's focus scale and clip). OK on the previewed card hands the running stream to
   the player, so it starts without re-buffering. `PlayerHolder.acquire(owner)`/`stop(owner)`: stop only acts for the
   latest owner, because Home and the player overlap during the screen fade.
-- **Logos**: Coil 3 (`AppContainer.images`, via the app's OkHttp, memory cache 10%). Used on Home cards only so far.
+- **Logos**: Coil 3 (`AppContainer.images`, via the app's OkHttp, memory cache 10%). Shown through `ChannelArt`/`ChannelLogo`
+  (`ui/components/ChannelArt.kt`) on Home cards, Live rows and the player overlay.
+- **Apple TV look**: `ChannelArt` fills its box with the logo's own colour (solid logo border → that colour, and the logo is
+  drawn bigger so it blends; transparent logo → a deep wash of its main colour; grey/white logos → neutral). Colours are
+  computed once per URL from a 24×24 sample (bitmaps loaded with `allowHardware(false)`, size 480).
+  `LumenCard`: 16 dp corners, focus = 1.1× lift + dark shadow + one light sheen sweep, no dimming.
+  Home: the focused favourite is the hero (clean name, quality tag, now/next) over a wash of its colour; cards below.
+- **Display names**: `util/ChannelNames.display()` strips country prefixes, quality tags (→ one "4K"/"HD" chip) and
+  symbols, and title-cases all-caps names (keeping known acronyms). Display only: stored names never change.
 - **Player** (`playback/PlayerHolder.kt`): one ExoPlayer, created lazily, released in `MainActivity.onStop`.
   Starts after 1 s of buffer. OkHttp data source (follows http→https redirects).
   Zapping is debounced 350 ms, and the old stream is stopped at once (providers often allow 1 connection).
@@ -85,7 +93,7 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
 - EPG import and `get_short_epg` not verified on a real provider yet.
 - Xtream JSON parsing has no unit tests (android.util.JsonReader is a stub on the JVM); it is checked on the TV.
 - tv-material Card/Surface scale animation timing isn't configurable. Revisit in Phase 4.
-- Placeholder banner/icon. Channel logos only on Home cards; Live rows and the player overlay still use monograms.
+- Placeholder banner/icon.
 - Home cards show the guide's current programme and progress under the name when the guide has one.
 
 ## Working notes
