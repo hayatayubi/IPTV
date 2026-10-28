@@ -1,0 +1,75 @@
+# Publishes Lumen updates. Whenever main changes, this reads the version in
+# app/build.gradle.kts (lumenVersion). If there's no GitHub Release for it yet, it builds
+# the signed release APK and publishes it as release "v<version>". Lumen on the TV
+# checks the latest release and offers the update.
+#
+# So to ship an update: bump lumenVersion in the PR, merge it. Nothing else.
+# (Run it by hand from the Actions tab with "Run workflow" if a build failed.)
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # all history and tags, for the release notes
+
+      - name: Read the version
+        id: version
+        run: |
+          version=$(sed -n 's/^val lumenVersion = "\(.*\)"$/\1/p' app/build.gradle.kts)
+          if [ -z "$version" ]; then echo "lumenVersion not found in app/build.gradle.kts"; exit 1; fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if gh release view "v$version" > /dev/null 2>&1; then
+            echo "v$version is already released: nothing to do."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - uses: actions/setup-java@v5
+        if: steps.version.outputs.exists != 'true'
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install the Android SDK platform
+        if: steps.version.outputs.exists != 'true'
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" "build-tools;37.0.0" > /dev/null
+
+      - uses: gradle/actions/setup-gradle@v5
+        if: steps.version.outputs.exists != 'true'
+
+      - name: Build the release APK
+        if: steps.version.outputs.exists != 'true'
+        run: ./gradlew assembleRelease testReleaseUnitTest
+
+      - name: Publish the release
+        if: steps.version.outputs.exists != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          apk="lumen-$VERSION.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$apk"
+          # What's new = the commit titles since the last release (merge commits left out).
+          previous=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          if [ -n "$previous" ]; then
+            git log --no-merges --format='- %s' "$previous..HEAD" > notes.md
+          else
+            echo "- Lumen can now update itself from GitHub Releases." > notes.md
+          fi
+          gh release create "v$VERSION" "$apk" --title "Lumen $VERSION" --notes-file notes.md --target "$GITHUB_SHA"

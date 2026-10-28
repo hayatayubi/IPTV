@@ -86,16 +86,20 @@ import kotlinx.coroutines.delay
  * favourites as a row of cards below. Resting on a card for a moment plays it muted
  * inside the card; OK opens it full screen (zapping through favourites), holding OK
  * removes it. "All channels" opens Live, "TV guide" the guide grid. The tabs at the top
- * open Movies and Series.
+ * open Movies and Series. When a newer Lumen is on GitHub, an "Update to …" button appears.
  */
 @Composable
 fun HomeScreen(
     onPlay: (channelId: Long) -> Unit,
     onBrowse: () -> Unit,
     onOpenGuide: () -> Unit,
+    onOpenUpdate: () -> Unit,
     onTab: (Tab) -> Unit,
 ) {
     val container = LocalAppContainer.current
+    val update by container.updates.available.collectAsStateWithLifecycle()
+    // Look for a newer Lumen when Home shows (at most every few hours; the TV keeps apps alive for days).
+    LaunchedEffect(Unit) { container.updates.checkInBackground() }
     val vm = viewModel { HomeViewModel(container.live, container.epg) }
     val favourites by vm.favourites.collectAsStateWithLifecycle()
     val guide by vm.nowNext.collectAsStateWithLifecycle()
@@ -159,6 +163,10 @@ fun HomeScreen(
                     )
                 }
                 Spacer(Modifier.weight(1f))
+                update?.let {
+                    LumenButton(text = "Update to ${it.version}", onClick = onOpenUpdate)
+                    Spacer(Modifier.width(12.dp))
+                }
                 LumenButton(text = "All channels", onClick = onBrowse, modifier = Modifier.focusRequester(buttonFocus))
                 Spacer(Modifier.width(12.dp))
                 LumenButton(text = "TV guide", onClick = onOpenGuide)

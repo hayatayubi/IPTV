@@ -12,6 +12,9 @@
         android:required="false" />
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Over-the-air updates: lets Lumen hand a downloaded update to Android's installer.
+         The user still has to allow it once ("Install unknown apps") and confirm each update. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- Backups are off: sources hold credentials, which must stay on this device.
          allowBackup covers API 29-30, dataExtractionRules covers 31+. -->
@@ -39,5 +42,10 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Hears back from Android's installer while an update installs. -->
+        <receiver
+            android:name=".data.update.InstallResultReceiver"
+            android:exported="false" />
     </application>
 </manifest>

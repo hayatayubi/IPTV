@@ -25,6 +25,7 @@ import com.hayat.lumen.ui.guide.GuideSettingsScreen
 import com.hayat.lumen.ui.home.HomeScreen
 import com.hayat.lumen.ui.live.LiveScreen
 import com.hayat.lumen.ui.player.PlayerScreen
+import com.hayat.lumen.ui.update.UpdateScreen
 import com.hayat.lumen.data.db.Poster
 import com.hayat.lumen.data.db.VodCategoryRow
 import com.hayat.lumen.data.db.VodKind
@@ -49,6 +50,8 @@ data class PlayerRoute(val channelId: Long, val inFavourites: Boolean = false) :
 data object GuideRoute : Route
 data object GuideSettingsRoute : Route
 data object ManageCategoriesRoute : Route
+/** "Update Lumen": install a newer version from GitHub Releases. */
+data object UpdateRoute : Route
 /** The Movies and Series tabs. They sit right above Home in the back stack, so Back returns to Live TV. */
 data object MoviesTabRoute : Route
 data object SeriesTabRoute : Route
@@ -132,6 +135,7 @@ fun LumenRoot(onExit: () -> Unit) {
                     onPlay = { backStack.add(PlayerRoute(it, inFavourites = true)) },
                     onBrowse = { backStack.add(LiveRoute) },
                     onOpenGuide = { backStack.add(GuideRoute) },
+                    onOpenUpdate = { backStack.add(UpdateRoute) },
                     onTab = onTab,
                 )
             }
@@ -156,6 +160,9 @@ fun LumenRoot(onExit: () -> Unit) {
             }
             entry<ManageCategoriesRoute> {
                 ManageCategoriesScreen()
+            }
+            entry<UpdateRoute> {
+                UpdateScreen()
             }
             entry<MoviesTabRoute> {
                 VodBrowseScreen(
