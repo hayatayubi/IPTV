@@ -53,9 +53,25 @@ jobs:
       - uses: gradle/actions/setup-gradle@v5
         if: steps.version.outputs.exists != 'true'
 
+      # The private signing key comes from the repo's Actions secrets (Settings → Secrets and
+      # variables → Actions). Without it the build stops: a release signed with any other key
+      # couldn't update the TVs that have Lumen installed.
+      - name: Unpack the signing key
+        if: steps.version.outputs.exists != 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.LUMEN_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then echo "::error::The LUMEN_KEYSTORE_BASE64 secret is missing"; exit 1; fi
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+          echo "LUMEN_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
       - name: Build the release APK
         if: steps.version.outputs.exists != 'true'
-        run: ./gradlew assembleRelease testReleaseUnitTest
+        env:
+          LUMEN_KEYSTORE_PASSWORD: ${{ secrets.LUMEN_KEYSTORE_PASSWORD }}
+          LUMEN_KEY_ALIAS: ${{ secrets.LUMEN_KEY_ALIAS }}
+          LUMEN_KEY_PASSWORD: ${{ secrets.LUMEN_KEY_PASSWORD }}
+        run: ./gradlew testDebugUnitTest assembleRelease
 
       - name: Publish the release
         if: steps.version.outputs.exists != 'true'
@@ -63,13 +79,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          apk="lumen-$VERSION.apk"
+          # Always named lumen.apk, so .../releases/latest/download/lumen.apk is a link that
+          # never changes (that's what the Downloader code points at).
+          apk="lumen.apk"
           cp app/build/outputs/apk/release/app-release.apk "$apk"
           # What's new = the commit titles since the last release (merge commits left out).
           previous=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
           if [ -n "$previous" ]; then
             git log --no-merges --format='- %s' "$previous..HEAD" > notes.md
           else
-            echo "- Lumen can now update itself from GitHub Releases." > notes.md
+            echo "- First public release." > notes.md
           fi
           gh release create "v$VERSION" "$apk" --title "Lumen $VERSION" --notes-file notes.md --target "$GITHUB_SHA"

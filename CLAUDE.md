@@ -28,7 +28,7 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
     Series page: Resume S1 · E3, seasons, episodes with progress. Player: OK pause, Left/Right 10 s (quick taps grow to 30 s, 1 min; holding ramps from 1 min/s to 20 min/s
     by hold time, see `SeekRamp`; "+12:30" shows while seeking),
     Up = audio/subtitles, Up next countdown at the end of an episode.
-- **Over-the-air updates.** Built (branch `claude/project-thread-amqra0`, on main). Not yet checked on the TV.
+- **Over-the-air updates.** Merged into main (PR #11). Not yet checked on the TV.
   - Home shows "Update to 0.3.0" when GitHub Releases has a newer version → Update screen: what's new, Install update
     (first time: "Allow updates" opens Android's Install unknown apps switch), download progress, Android's confirm.
   - Not in Phase 1: Left sidebar and Right mini guide in the player (Phases 3/6), logos (Phase 4), settings/source editing (Phase 6).
@@ -123,7 +123,13 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
   FileProvider), result via `InstallResultReceiver`; `USER_ACTION_NOT_REQUIRED` is requested, so once Lumen is its own
   installer of record later updates may skip the confirm screen. Needs `REQUEST_INSTALL_PACKAGES` + the user's one-time
   "Install unknown apps" switch. Android rejects an update with a different signing key, so never change the key.
-- Shared debug keystore in `keystore/`, used for debug and release, so cloud and laptop builds install over each other.
+- **Public release (Route 1, from 0.3.0)**: distributed on GitHub Releases only (no Play Store yet). Releases are
+  signed with a **private key** (`LUMEN_KEYSTORE*` Actions secrets, set up per `docs/RELEASING.md`; the workflow fails
+  without them). The asset is always `lumen.apk`, so `releases/latest/download/lumen.apk` is a stable link for the
+  Downloader app. `PRIVACY.md` = privacy policy. The brand logo tiles stay in the public build (Hayat's choice
+  2026-10-28; they'd have to go for Google Play).
+- Shared debug keystore in `keystore/`: signs debug builds and local release builds, so cloud and laptop builds install
+  over each other. It can't install over a published (privately signed) release, or the reverse.
 - Backups disabled (`allowBackup=false` + `data_extraction_rules.xml`): credentials stay on the device.
 - UI components (`ui/components`):
   - `LumenListItem`: focused row turns light with dark text.

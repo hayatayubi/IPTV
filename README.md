@@ -1,7 +1,9 @@
 # Lumen
 
 A minimal, Apple TV–style IPTV player for Google TV, written in Kotlin with Jetpack Compose for TV.
-Built for a personal setup on a Chromecast with Google TV (4K).
+
+**Lumen is only a player: it comes with no channels, films or playlists.** You add a playlist or Xtream login
+from your own provider. Lumen collects no data (see the [privacy policy](PRIVACY.md)).
 
 ## Features
 
@@ -20,21 +22,33 @@ Built for a personal setup on a Chromecast with Google TV (4K).
 
 ## Install on the TV
 
-You need `adb` on your computer and wireless debugging turned on on the TV. The full walkthrough
-(developer mode, pairing, Mac tools) is in [docs/SETUP.md](docs/SETUP.md).
+Lumen isn't on the Play Store. You install it once with the free **Downloader** app, and after that it updates
+itself.
+
+1. On the TV, install **Downloader** (by AFTVnews) from the Play Store.
+2. Allow it to install apps: *Settings → Apps → Security & restrictions → Unknown sources → Downloader* (on).
+3. Open Downloader and enter this link (it always points at the newest version):
+   `https://github.com/hayatayubi/IPTV/releases/latest/download/lumen.apk`
+4. Choose **Install**. Lumen appears in your apps.
+
+**Updates:** when a new version is out, Lumen's Home screen shows an "Update to …" button. The first time, it asks you
+to allow Lumen to install updates (one switch), then each update is one click. Your playlists and favourites are kept.
+
+### With adb (developers)
+
+You need `adb` and wireless debugging on the TV; the walkthrough is in [docs/SETUP.md](docs/SETUP.md).
 
 ```sh
 adb connect <tv-ip>:<port>
-adb -s <tv-ip>:<port> install -r lumen-release.apk
+adb -s <tv-ip>:<port> install -r lumen.apk
 ```
-
-After that, Lumen updates itself: when a newer version is on this repo's
-[Releases](https://github.com/hayatayubi/IPTV/releases) page, Home shows an "Update to …" button.
 
 ## Releasing an update
 
-Bump `lumenVersion` in `app/build.gradle.kts` and merge to main. The Release workflow builds the signed APK and
-publishes it as a GitHub Release, and the TV picks it up.
+Bump `lumenVersion` in `app/build.gradle.kts` and merge to main. The Release workflow builds the APK, signs it with
+the private release key from the repo's Actions secrets, and publishes it as a GitHub Release named `v<version>`
+with `lumen.apk` attached. TVs pick it up within a few hours (or straight away with Live → Refresh).
+Setting up the key: [docs/RELEASING.md](docs/RELEASING.md).
 
 ## Build
 
@@ -46,8 +60,9 @@ Requires JDK 17+ and the Android SDK (`platforms;android-37.0`).
 ./gradlew testDebugUnitTest    # unit tests
 ```
 
-Use release builds to judge smoothness: debug Compose builds stutter on the Chromecast. Debug and release are
-signed with the same shared key in `keystore/`, so either installs over the other.
+Use release builds to judge smoothness: debug Compose builds stutter on the Chromecast. Local builds (debug and
+release) are signed with the shared key in `keystore/`, so either installs over the other, but not over a published
+release, which uses the private key.
 
 ## Project layout
 
