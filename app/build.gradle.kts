@@ -9,7 +9,7 @@ plugins {
 
 // The app's version. Bump this to publish an update: when it reaches main, the Release
 // workflow builds the APK and puts it on GitHub Releases, and the TV offers it.
-val lumenVersion = "0.2.0"
+val lumenVersion = "0.3.0"
 
 android {
     namespace = "com.hayat.lumen"
@@ -38,6 +38,19 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+        // The private release key. It lives only on Hayat's Mac (backed up) and in the repo's
+        // GitHub Actions secrets, never in the repo: anyone holding it could sign an "update"
+        // that every installed Lumen would accept. The Release workflow passes it in through
+        // these environment variables.
+        val releaseKeystore = providers.environmentVariable("LUMEN_KEYSTORE").orNull
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = file(releaseKeystore)
+                storePassword = providers.environmentVariable("LUMEN_KEYSTORE_PASSWORD").get()
+                keyAlias = providers.environmentVariable("LUMEN_KEY_ALIAS").get()
+                keyPassword = providers.environmentVariable("LUMEN_KEY_PASSWORD").get()
+            }
+        }
     }
 
     buildTypes {
@@ -48,8 +61,10 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Personal sideload build: signed with the same key until we set up a real one.
-            signingConfig = signingConfigs.getByName("debug")
+            // Published releases are signed with the private key (see above). Without it (a release
+            // built on a laptop or in a cloud session) the shared debug key is used, so it installs
+            // for testing, but it can't update a TV that has a published release, and vice versa.
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 
