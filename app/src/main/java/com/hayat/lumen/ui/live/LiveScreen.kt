@@ -159,7 +159,10 @@ fun LiveScreen(onPlay: (channelId: Long) -> Unit, onOpenGuide: () -> Unit, onMan
                 )
                 LumenButton(
                     text = "Refresh",
-                    onClick = vm::refreshAll,
+                    onClick = {
+                        vm.refreshAll()
+                        container.updates.checkInBackground(force = true)
+                    },
                     enabled = refresh !is RefreshState.Running,
                 )
                 Spacer(Modifier.width(12.dp))

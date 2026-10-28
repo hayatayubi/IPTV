@@ -28,6 +28,14 @@ adb connect <tv-ip>:<port>
 adb -s <tv-ip>:<port> install -r lumen-release.apk
 ```
 
+After that, Lumen updates itself: when a newer version is on this repo's
+[Releases](https://github.com/hayatayubi/IPTV/releases) page, Home shows an "Update to …" button.
+
+## Releasing an update
+
+Bump `lumenVersion` in `app/build.gradle.kts` and merge to main. The Release workflow builds the signed APK and
+publishes it as a GitHub Release, and the TV picks it up.
+
 ## Build
 
 Requires JDK 17+ and the Android SDK (`platforms;android-37.0`).
@@ -45,7 +53,7 @@ signed with the same shared key in `keystore/`, so either installs over the othe
 
 - `app/src/main/java/com/hayat/lumen/data`: Room database, M3U and Xtream import, TV guide (EPG).
 - `app/src/main/java/com/hayat/lumen/playback`: the single shared ExoPlayer.
-- `app/src/main/java/com/hayat/lumen/ui`: screens (Home, Live, Guide, Categories, Player) and shared components.
+- `app/src/main/java/com/hayat/lumen/ui`: screens (Home, Live, Guide, Categories, Player, Movies, Series, Update) and shared components.
 - `CLAUDE.md`: design decisions and conventions for contributors.
 
 ## Privacy

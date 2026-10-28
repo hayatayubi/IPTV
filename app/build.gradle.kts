@@ -7,6 +7,10 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// The app's version. Bump this to publish an update: when it reaches main, the Release
+// workflow builds the APK and puts it on GitHub Releases, and the TV offers it.
+val lumenVersion = "0.2.0"
+
 android {
     namespace = "com.hayat.lumen"
     compileSdk = 37
@@ -15,8 +19,12 @@ android {
         applicationId = "com.hayat.lumen"
         minSdk = 29
         targetSdk = 37
-        versionCode = 2
-        versionName = "0.1.0"
+        versionName = lumenVersion
+        // Android only installs an update with a higher versionCode, so derive it from the
+        // version name: 0.2.0 → 200, 1.4.12 → 10412. (Was hand-set to 2 before 0.2.0.)
+        versionCode = lumenVersion.split('.').map(String::toInt).let { (major, minor, patch) ->
+            major * 10_000 + minor * 100 + patch
+        }
     }
 
     signingConfigs {

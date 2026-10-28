@@ -20,7 +20,7 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
 - **Hide categories and playlists.** Built (branch `claude/project-thread-xcw5xx`, on top of favourites). Not yet checked on the TV.
   - Hold OK on a category in Live to hide it. Live → **Categories** lists every category with a tick (OK toggles),
     a search, and Show all / Hide all (acting on just the search matches). OK on a playlist row hides the whole playlist.
-- **Movies and series (VOD).** Built (branch `claude/project-thread-qekyqm`, on main). Not yet checked on the TV.
+- **Movies and series (VOD).** Merged into main (PR #10), checked on the TV 2026-10-28.
   - Home's top bar: Live TV · Movies · Series. Each VOD tab: hero (backdrop, title, year, genre, plot) over poster rows:
     Continue watching (that tab only, not Home), My List, then the provider's categories (30 posters + "See all").
     Hold OK on a poster = My List; in Continue watching = remove. "See all" has Hide category; hidden ones come back at the
@@ -28,6 +28,9 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
     Series page: Resume S1 · E3, seasons, episodes with progress. Player: OK pause, Left/Right 10 s (quick taps grow to 30 s, 1 min; holding ramps from 1 min/s to 20 min/s
     by hold time, see `SeekRamp`; "+12:30" shows while seeking),
     Up = audio/subtitles, Up next countdown at the end of an episode.
+- **Over-the-air updates.** Built (branch `claude/project-thread-amqra0`, on main). Not yet checked on the TV.
+  - Home shows "Update to 0.3.0" when GitHub Releases has a newer version → Update screen: what's new, Install update
+    (first time: "Allow updates" opens Android's Install unknown apps switch), download progress, Android's confirm.
   - Not in Phase 1: Left sidebar and Right mini guide in the player (Phases 3/6), logos (Phase 4), settings/source editing (Phase 6).
 
 ## Decisions
@@ -111,6 +114,15 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
   on leaving; under 30 s isn't saved), `my_list`, `hidden_vod_categories`. `NextUp.pick` chooses a series' Play episode.
   Display names: `util/VodNames` strips `4K-NF - ` prefixes and `(2021) (FR)` suffixes. Subtitles use Media3's
   `SubtitleView` (media3-ui) inside an `AndroidView`. Stream URLs: `/movie/u/p/<id>.<ext>`, `/series/u/p/<id>.<ext>`.
+- **Updates** (`data/update/`): version lives in `app/build.gradle.kts` as `lumenVersion`; `versionCode` is derived
+  (major·10000 + minor·100 + patch, so 0.2.0 = 200; it was 2 before). `.github/workflows/release.yml` runs on every push
+  to main: if release `v<lumenVersion>` doesn't exist, it builds `assembleRelease` and publishes it with `lumen-<v>.apk`
+  and the commit titles since the last tag as notes. **To ship an update, bump `lumenVersion` in the PR.**
+  The app checks `api.github.com/repos/hayatayubi/IPTV/releases/latest` (public repo, no token) at launch, when Home shows
+  (at most every 6 h) and with Live's Refresh. Install streams the APK into a `PackageInstaller` session (no file, no
+  FileProvider), result via `InstallResultReceiver`; `USER_ACTION_NOT_REQUIRED` is requested, so once Lumen is its own
+  installer of record later updates may skip the confirm screen. Needs `REQUEST_INSTALL_PACKAGES` + the user's one-time
+  "Install unknown apps" switch. Android rejects an update with a different signing key, so never change the key.
 - Shared debug keystore in `keystore/`, used for debug and release, so cloud and laptop builds install over each other.
 - Backups disabled (`allowBackup=false` + `data_extraction_rules.xml`): credentials stay on the device.
 - UI components (`ui/components`):
