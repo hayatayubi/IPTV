@@ -91,6 +91,7 @@ dependencies {
     implementation(libs.androidx.media3.exoplayer.hls)
     implementation(libs.androidx.media3.datasource.okhttp)
     implementation(libs.androidx.media3.ui.compose)
+    implementation(libs.androidx.media3.ui)
 
     implementation(libs.okhttp)
     // Coil loads channel logos (like Kingfisher/Nuke on iOS), over the app's OkHttp client.

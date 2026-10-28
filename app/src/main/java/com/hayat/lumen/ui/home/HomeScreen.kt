@@ -71,6 +71,8 @@ import com.hayat.lumen.ui.components.LumenButton
 import com.hayat.lumen.ui.components.LumenCard
 import com.hayat.lumen.ui.components.ProgrammeProgress
 import com.hayat.lumen.ui.components.QualityTag
+import com.hayat.lumen.ui.components.Tab
+import com.hayat.lumen.ui.components.TopTabs
 import com.hayat.lumen.ui.components.formatTime
 import com.hayat.lumen.ui.components.timeRange
 import com.hayat.lumen.ui.theme.LumenColors
@@ -83,10 +85,16 @@ import kotlinx.coroutines.delay
  * (its name, what's on now and next, on a wash of the channel's colour), with the
  * favourites as a row of cards below. Resting on a card for a moment plays it muted
  * inside the card; OK opens it full screen (zapping through favourites), holding OK
- * removes it. "All channels" opens Live, "TV guide" the guide grid.
+ * removes it. "All channels" opens Live, "TV guide" the guide grid. The tabs at the top
+ * open Movies and Series.
  */
 @Composable
-fun HomeScreen(onPlay: (channelId: Long) -> Unit, onBrowse: () -> Unit, onOpenGuide: () -> Unit) {
+fun HomeScreen(
+    onPlay: (channelId: Long) -> Unit,
+    onBrowse: () -> Unit,
+    onOpenGuide: () -> Unit,
+    onTab: (Tab) -> Unit,
+) {
     val container = LocalAppContainer.current
     val vm = viewModel { HomeViewModel(container.live, container.epg) }
     val favourites by vm.favourites.collectAsStateWithLifecycle()
@@ -141,14 +149,10 @@ fun HomeScreen(onPlay: (channelId: Long) -> Unit, onBrowse: () -> Unit, onOpenGu
                 .padding(horizontal = SafeArea.Horizontal, vertical = SafeArea.Vertical),
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "Favourites",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = LumenColors.TextSecondary,
-                )
+                TopTabs(selected = Tab.LIVE, onSelect = onTab)
                 if (list.isNotEmpty()) {
                     Text(
-                        "Hold OK to remove",
+                        "Hold OK on a favourite to remove it",
                         style = MaterialTheme.typography.bodySmall,
                         color = LumenColors.TextTertiary,
                         modifier = Modifier.padding(start = 16.dp, top = 4.dp),

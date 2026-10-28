@@ -9,6 +9,7 @@ import coil3.request.crossfade
 import com.hayat.lumen.data.LiveRepository
 import com.hayat.lumen.data.db.LumenDatabase
 import com.hayat.lumen.data.epg.EpgRepository
+import com.hayat.lumen.data.vod.VodRepository
 import com.hayat.lumen.playback.PlayerHolder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -40,6 +41,7 @@ class AppContainer(context: Context) {
     val db: LumenDatabase = LumenDatabase.create(appContext)
     val live = LiveRepository(db, http)
     val epg = EpgRepository(db, http, appScope)
+    val vod = VodRepository(db, http, appScope)
     val player = PlayerHolder(appContext, http)
 
     /** Loads channel logos through [http] (same user agent). Memory cache kept small for the 2 GB TV. */
@@ -55,6 +57,8 @@ class AppContainer(context: Context) {
     init {
         // Guides go stale within a day; refresh any older than 12 hours in the background.
         epg.updateStaleInBackground()
+        // Film and series lists change slowly; reload them once a day.
+        vod.refreshStaleInBackground()
     }
 
     private companion object {

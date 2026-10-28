@@ -20,6 +20,14 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
 - **Hide categories and playlists.** Built (branch `claude/project-thread-xcw5xx`, on top of favourites). Not yet checked on the TV.
   - Hold OK on a category in Live to hide it. Live → **Categories** lists every category with a tick (OK toggles),
     a search, and Show all / Hide all (acting on just the search matches). OK on a playlist row hides the whole playlist.
+- **Movies and series (VOD).** Built (branch `claude/project-thread-qekyqm`, on main). Not yet checked on the TV.
+  - Home's top bar: Live TV · Movies · Series. Each VOD tab: hero (backdrop, title, year, genre, plot) over poster rows:
+    Continue watching (that tab only, not Home), My List, then the provider's categories (30 posters + "See all").
+    Hold OK on a poster = My List; in Continue watching = remove. "See all" has Hide category; hidden ones come back at the
+    bottom of the tab. Search (films + series) from the tab. Film page: Play / Resume from 42:10 / Start over / My List.
+    Series page: Resume S1 · E3, seasons, episodes with progress. Player: OK pause, Left/Right 10 s (quick taps grow to 30 s, 1 min; holding ramps from 1 min/s to 20 min/s
+    by hold time, see `SeekRamp`; "+12:30" shows while seeking),
+    Up = audio/subtitles, Up next countdown at the end of an episode.
   - Not in Phase 1: Left sidebar and Right mini guide in the player (Phases 3/6), logos (Phase 4), settings/source editing (Phase 6).
 
 ## Decisions
@@ -95,6 +103,14 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
   Starts after 1 s of buffer. OkHttp data source (follows http→https redirects).
   Zapping is debounced 350 ms, and the old stream is stopped at once (providers often allow 1 connection).
   Up = previous in list, Down = next; CH+/CH- keys = next/previous.
+- **VOD** (`data/vod/`, DB v5, auto-migration from v4): Xtream only. `movies`, `series`, `vod_categories` stored under
+  `sources.vodGeneration` (same swap idea as channels), ~35k films + 9k series on the owner's provider.
+  Loaded in the background at launch if older than 24 h, after adding a playlist, and with Live's Refresh.
+  Film details (`get_vod_info`) and episodes (`get_series_info`) are fetched on demand, cached in memory (LRU), not stored.
+  User state keyed on provider ids (survive refreshes): `watch_progress` (finished at 95%, saved every 15 s, on pause and
+  on leaving; under 30 s isn't saved), `my_list`, `hidden_vod_categories`. `NextUp.pick` chooses a series' Play episode.
+  Display names: `util/VodNames` strips `4K-NF - ` prefixes and `(2021) (FR)` suffixes. Subtitles use Media3's
+  `SubtitleView` (media3-ui) inside an `AndroidView`. Stream URLs: `/movie/u/p/<id>.<ext>`, `/series/u/p/<id>.<ext>`.
 - Shared debug keystore in `keystore/`, used for debug and release, so cloud and laptop builds install over each other.
 - Backups disabled (`allowBackup=false` + `data_extraction_rules.xml`): credentials stay on the device.
 - UI components (`ui/components`):
@@ -112,6 +128,10 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
 - `type=m3u` Xtream URLs have no group/logo attributes. Moot for `get.php` links now: they go through the Xtream API.
 - EPG import and `get_short_epg` not verified on a real provider yet.
 - Xtream JSON parsing has no unit tests (android.util.JsonReader is a stub on the JVM); it is checked on the TV.
+  The VOD parsers were checked once (2026-10-27) against a saved copy of the owner's provider lists with Gson's
+  identical JsonReader, in a throwaway test.
+- VOD audio: DTS tracks have no decoder on the Chromecast (no FFmpeg extension), so such films may be silent; pick
+  another track with Up. Not verified on the TV yet.
 - tv-material Card/Surface scale animation timing isn't configurable. Revisit in Phase 4.
 - Placeholder banner/icon.
 - Home cards show the guide's current programme and progress under the name when the guide has one.

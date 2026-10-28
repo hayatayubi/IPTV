@@ -60,7 +60,7 @@ import java.text.NumberFormat
 @Composable
 fun LiveScreen(onPlay: (channelId: Long) -> Unit, onOpenGuide: () -> Unit, onManageCategories: () -> Unit) {
     val container = LocalAppContainer.current
-    val vm = viewModel { LiveViewModel(container.live, container.epg) }
+    val vm = viewModel { LiveViewModel(container.live, container.epg, container.vod) }
     val groups by vm.groups.collectAsStateWithLifecycle()
     val selected by vm.selected.collectAsStateWithLifecycle()
     val channels by vm.channels.collectAsStateWithLifecycle()

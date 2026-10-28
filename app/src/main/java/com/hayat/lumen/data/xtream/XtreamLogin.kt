@@ -37,6 +37,20 @@ data class XtreamLogin(val server: HttpUrl, val username: String, val password: 
         .build()
         .toString()
 
+    /** A film: `/movie/<user>/<pass>/<id>.<ext>`. */
+    fun movieUrl(streamId: String, extension: String): String = mediaUrl("movie", streamId, extension)
+
+    /** A series episode: `/series/<user>/<pass>/<id>.<ext>`. */
+    fun episodeUrl(episodeId: String, extension: String): String = mediaUrl("series", episodeId, extension)
+
+    private fun mediaUrl(kind: String, id: String, extension: String): String = server.newBuilder()
+        .addPathSegment(kind)
+        .addPathSegment(username)
+        .addPathSegment(password)
+        .addPathSegment("$id.$extension")
+        .build()
+        .toString()
+
     companion object {
         private val liveStreamId = Regex("/live/[^/]+/[^/]+/(\\d+)(\\.[a-z0-9]+)?$", RegexOption.IGNORE_CASE)
 

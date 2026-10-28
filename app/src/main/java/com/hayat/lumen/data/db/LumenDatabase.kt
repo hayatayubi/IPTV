@@ -10,13 +10,16 @@ import androidx.room.RoomDatabase
     entities = [
         SourceEntity::class, ChannelGroupEntity::class, ChannelEntity::class,
         ProgrammeEntity::class, EpgStateEntity::class, FavouriteEntity::class, HiddenGroupEntity::class,
+        VodCategoryEntity::class, MovieEntity::class, SeriesEntity::class,
+        WatchProgressEntity::class, MyListEntity::class, HiddenVodCategoryEntity::class,
     ],
-    version = 4,
+    version = 5,
     // Room compares the exported schema JSONs and writes the SQL itself.
     autoMigrations = [
         AutoMigration(from = 1, to = 2), // adds the guide tables
         AutoMigration(from = 2, to = 3), // adds the favourites table
         AutoMigration(from = 3, to = 4), // adds hidden_groups and sources.hidden
+        AutoMigration(from = 4, to = 5), // adds movies and series, watch progress, My List
     ],
 )
 abstract class LumenDatabase : RoomDatabase() {
@@ -25,6 +28,8 @@ abstract class LumenDatabase : RoomDatabase() {
     abstract fun epg(): EpgDao
     abstract fun favourites(): FavouriteDao
     abstract fun hidden(): HiddenDao
+    abstract fun vod(): VodDao
+    abstract fun vodUser(): VodUserDao
 
     companion object {
         fun create(context: Context): LumenDatabase =
