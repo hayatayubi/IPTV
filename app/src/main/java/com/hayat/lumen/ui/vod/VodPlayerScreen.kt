@@ -77,7 +77,7 @@ private enum class VodStatus { LOADING, READY, ENDED, FAILED }
 
 /**
  * Full-screen film/episode player.
- * OK or Play/Pause: pause and resume · Left/Right: back/forward 10 s (hold to go faster) ·
+ * OK or Play/Pause: pause and resume · Left/Right: back/forward 10 s; quick taps and holding speed up ([SeekRamp]) ·
  * Up: audio and subtitles · Back: hide the controls, then leave. Your place is saved as you
  * watch; at the end of an episode the next one starts after a short countdown.
  */
@@ -98,6 +98,9 @@ fun VodPlayerScreen(sourceId: Long, kind: VodKind, itemId: String, seriesId: Str
     var interaction by remember { mutableIntStateOf(0) }
     /** Where Left/Right is taking us; applied once the keys go quiet, so holding them doesn't re-buffer each step. */
     var seekTarget by remember { mutableStateOf<Long?>(null) }
+    /** Where the current seek started, for the "+12:30" shown while seeking. */
+    var seekFrom by remember { mutableLongStateOf(0L) }
+    val seekRamp = remember { SeekRamp() }
     var panel by remember { mutableStateOf(false) }
     var tracks by remember { mutableStateOf(Tracks.EMPTY) }
     var cues by remember { mutableStateOf<List<Cue>>(emptyList()) }
@@ -244,17 +247,12 @@ fun VodPlayerScreen(sourceId: Long, kind: VodKind, itemId: String, seriesId: Str
         showControls()
     }
 
-    fun seekBy(direction: Int, repeat: Int) {
+    fun seekBy(direction: Int, repeat: Int, eventTime: Long) {
         val p = player ?: return
         if (status == VodStatus.ENDED || duration <= 0) return
-        // Hold to go faster: 10 s steps, then 30 s, then a minute.
-        val step = when {
-            repeat < 10 -> 10_000L
-            repeat < 30 -> 30_000L
-            else -> 60_000L
-        }
-        val from = seekTarget ?: p.currentPosition
-        seekTarget = (from + direction * step).coerceIn(0L, (duration - 1_000).coerceAtLeast(0))
+        val from = seekTarget ?: p.currentPosition.also { seekFrom = it }
+        val step = seekRamp.step(direction, repeat, duration, eventTime)
+        seekTarget = (from + step).coerceIn(0L, (duration - 1_000).coerceAtLeast(0))
         showControls()
     }
 
@@ -275,8 +273,8 @@ fun VodPlayerScreen(sourceId: Long, kind: VodKind, itemId: String, seriesId: Str
                         if (repeat == 0) togglePlay()
                         true
                     }
-                    Key.DirectionLeft, Key.MediaRewind -> { seekBy(-1, repeat); true }
-                    Key.DirectionRight, Key.MediaFastForward -> { seekBy(+1, repeat); true }
+                    Key.DirectionLeft, Key.MediaRewind -> { seekBy(-1, repeat, event.nativeKeyEvent.eventTime); true }
+                    Key.DirectionRight, Key.MediaFastForward -> { seekBy(+1, repeat, event.nativeKeyEvent.eventTime); true }
                     Key.DirectionUp -> {
                         if (hasChoices) panel = true else showControls()
                         true
@@ -312,6 +310,7 @@ fun VodPlayerScreen(sourceId: Long, kind: VodKind, itemId: String, seriesId: Str
                 position = seekTarget ?: position,
                 duration = duration,
                 seeking = seekTarget != null,
+                seekDelta = seekTarget?.let { it - seekFrom },
                 hint = if (hasChoices) "Press Up for audio and subtitles" else null,
             )
         }
@@ -365,6 +364,7 @@ private fun Controls(
     position: Long,
     duration: Long,
     seeking: Boolean,
+    seekDelta: Long?,
     hint: String?,
 ) {
     Column(
@@ -402,7 +402,16 @@ private fun Controls(
                     color = LumenColors.TextPrimary,
                 )
                 Spacer(Modifier.weight(1f))
-                hint?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = LumenColors.TextTertiary) }
+                // While seeking: how far from where you started ("+12:30"), so you can tell the speed.
+                if (seekDelta != null) {
+                    Text(
+                        (if (seekDelta < 0) "−" else "+") + formatPosition(kotlin.math.abs(seekDelta)),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = LumenColors.TextPrimary,
+                    )
+                } else {
+                    hint?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = LumenColors.TextTertiary) }
+                }
                 Spacer(Modifier.weight(1f))
                 Text("-${formatPosition((duration - position).coerceAtLeast(0))}", style = MaterialTheme.typography.bodyMedium, color = LumenColors.TextSecondary)
             }

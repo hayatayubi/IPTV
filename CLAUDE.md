@@ -25,7 +25,8 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
     Continue watching (that tab only, not Home), My List, then the provider's categories (30 posters + "See all").
     Hold OK on a poster = My List; in Continue watching = remove. "See all" has Hide category; hidden ones come back at the
     bottom of the tab. Search (films + series) from the tab. Film page: Play / Resume from 42:10 / Start over / My List.
-    Series page: Resume S1 · E3, seasons, episodes with progress. Player: OK pause, Left/Right 10 s (hold = 30 s, 60 s),
+    Series page: Resume S1 · E3, seasons, episodes with progress. Player: OK pause, Left/Right 10 s (quick taps grow to 30 s, 1 min; holding ramps from 1 min/s to 20 min/s
+    by hold time, see `SeekRamp`; "+12:30" shows while seeking),
     Up = audio/subtitles, Up next countdown at the end of an episode.
   - Not in Phase 1: Left sidebar and Right mini guide in the player (Phases 3/6), logos (Phase 4), settings/source editing (Phase 6).
 
