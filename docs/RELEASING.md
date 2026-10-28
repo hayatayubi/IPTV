@@ -28,7 +28,7 @@ It asks for a password twice. Use one strong password (store it in your password
 
 ### 2. Give it to GitHub
 
-On https://github.com/hayatayubi/IPTV → **Settings → Secrets and variables → Actions → New repository secret**, add
+On https://github.com/lumen-tv/Lumen-TV → **Settings → Secrets and variables → Actions → New repository secret**, add
 four secrets:
 
 | Name | Value |
@@ -56,8 +56,13 @@ Lumen 0.2.0 and earlier were signed with the shared debug key in `keystore/`. An
 a new key, so a TV with an older Lumen must uninstall it and install the first privately signed release (this wipes
 its playlists and favourites once).
 
+## The download page
+
+https://lumen-tv.github.io is the `lumen-tv/lumen-tv.github.io` repo (GitHub Pages): the install page, and `/get`,
+which forwards to the newest `lumen.apk`. It never needs changing for a release.
+
 ## The Downloader code
 
-`https://github.com/hayatayubi/IPTV/releases/latest/download/lumen.apk` always serves the newest release. To give
+`https://github.com/lumen-tv/Lumen-TV/releases/latest/download/lumen.apk` always serves the newest release. To give
 people a short number to type into the Downloader app, enter that link at https://aftv.news (the AFTVnews URL
 shortener). Codes are permanent and public.

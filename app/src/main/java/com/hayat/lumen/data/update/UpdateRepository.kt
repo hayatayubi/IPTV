@@ -278,7 +278,7 @@ class UpdateRepository(
 
     private companion object {
         const val TAG = "Updates"
-        const val LATEST_RELEASE_URL = "https://api.github.com/repos/hayatayubi/IPTV/releases/latest"
+        const val LATEST_RELEASE_URL = "https://api.github.com/repos/lumen-tv/Lumen-TV/releases/latest"
         const val CHECK_EVERY_MS = 6 * 60 * 60 * 1000L
     }
 }

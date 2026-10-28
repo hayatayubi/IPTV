@@ -27,8 +27,7 @@ itself.
 
 1. On the TV, install **Downloader** (by AFTVnews) from the Play Store.
 2. Allow it to install apps: *Settings → Apps → Security & restrictions → Unknown sources → Downloader* (on).
-3. Open Downloader and enter this link (it always points at the newest version):
-   `https://github.com/hayatayubi/IPTV/releases/latest/download/lumen.apk`
+3. Open Downloader and enter `lumen-tv.github.io/get` (it always gives the newest version).
 4. Choose **Install**. Lumen appears in your apps.
 
 **Updates:** when a new version is out, Lumen's Home screen shows an "Update to …" button. The first time, it asks you

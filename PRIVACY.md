@@ -17,4 +17,4 @@ Lumen is a video player for Google TV. It does not collect, share or sell any pe
     [GitHub's privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
 - **Removing your data:** delete a playlist in Lumen, or uninstall Lumen, and everything it stored is removed.
 
-Lumen provides no content of its own. Questions: open an issue at https://github.com/hayatayubi/IPTV/issues.
+Lumen provides no content of its own. Questions: open an issue at https://github.com/lumen-tv/Lumen-TV/issues.
