@@ -40,6 +40,13 @@ interface SourceDao {
     @Query("UPDATE sources SET hidden = :hidden WHERE id = :id")
     suspend fun setHidden(id: Long, hidden: Boolean)
 
+    @Query("UPDATE sources SET name = :name WHERE id = :id")
+    suspend fun rename(id: Long, name: String)
+
+    /** A new link or login. The next refresh imports from it. */
+    @Query("UPDATE sources SET type = :type, url = :url, username = :username, password = :password WHERE id = :id")
+    suspend fun setConnection(id: Long, type: SourceType, url: String, username: String?, password: String?)
+
     @Query("DELETE FROM sources WHERE id = :id")
     suspend fun delete(id: Long)
 }
@@ -55,7 +62,7 @@ interface ChannelDao {
     /** Live rows only ever come from a source's current generation. Hidden playlists and categories are left out. */
     @Query(
         """
-        SELECT g.sourceId, s.name AS sourceName, g.name, g.channelCount
+        SELECT g.sourceId, s.name AS sourceName, g.name, COALESCE((SELECT r.label FROM renamed_groups r WHERE r.sourceId = g.sourceId AND r.groupName = g.name), g.name) AS label, g.channelCount
         FROM channel_groups g JOIN sources s ON s.id = g.sourceId AND s.generation = g.generation
         WHERE s.hidden = 0
             AND NOT EXISTS(SELECT 1 FROM hidden_groups h WHERE h.sourceId = g.sourceId AND h.groupName = g.name)
@@ -67,7 +74,7 @@ interface ChannelDao {
     /** Every category, hidden or not, for Manage categories. */
     @Query(
         """
-        SELECT g.sourceId, g.name, g.channelCount,
+        SELECT g.sourceId, g.name, COALESCE((SELECT r.label FROM renamed_groups r WHERE r.sourceId = g.sourceId AND r.groupName = g.name), g.name) AS label, g.channelCount,
             EXISTS(SELECT 1 FROM hidden_groups h WHERE h.sourceId = g.sourceId AND h.groupName = g.name) AS hidden
         FROM channel_groups g JOIN sources s ON s.id = g.sourceId AND s.generation = g.generation
         ORDER BY g.sourceId, g.playlistOrder
@@ -91,7 +98,9 @@ interface ChannelDao {
 
     @Query(
         """
-        SELECT c.id, c.name, c.number, c.streamUrl, c.groupName, c.playlistOrder, c.logoUrl
+        SELECT c.id, c.name, c.number, c.streamUrl, c.groupName,
+            COALESCE((SELECT r.label FROM renamed_groups r WHERE r.sourceId = c.sourceId AND r.groupName = c.groupName), c.groupName) AS groupLabel,
+            c.playlistOrder, c.logoUrl
         FROM channels c JOIN sources s ON s.id = c.sourceId AND s.generation = c.generation
         WHERE c.sourceId = :sourceId AND c.groupName = :groupName
         ORDER BY c.playlistOrder
@@ -210,7 +219,9 @@ interface FavouriteDao {
 
     @Query(
         """
-        SELECT c.id, c.name, c.number, c.streamUrl, c.groupName, c.playlistOrder, c.logoUrl
+        SELECT c.id, c.name, c.number, c.streamUrl, c.groupName,
+            COALESCE((SELECT r.label FROM renamed_groups r WHERE r.sourceId = c.sourceId AND r.groupName = c.groupName), c.groupName) AS groupLabel,
+            c.playlistOrder, c.logoUrl
         FROM favourites f
         JOIN sources s ON s.id = f.sourceId AND s.hidden = 0
         JOIN channels c ON c.sourceId = f.sourceId AND c.stableKey = f.stableKey AND c.generation = s.generation
@@ -238,6 +249,27 @@ interface FavouriteDao {
 
     @Query("DELETE FROM favourites WHERE sourceId = :sourceId")
     suspend fun removeAllOf(sourceId: Long)
+}
+
+@Dao
+interface RenameDao {
+    @Upsert
+    suspend fun renameGroup(rename: RenamedGroupEntity)
+
+    @Query("DELETE FROM renamed_groups WHERE sourceId = :sourceId AND groupName = :groupName")
+    suspend fun resetGroup(sourceId: Long, groupName: String)
+
+    @Upsert
+    suspend fun renameVodCategory(rename: RenamedVodCategoryEntity)
+
+    @Query("DELETE FROM renamed_vod_categories WHERE sourceId = :sourceId AND kind = :kind AND categoryId = :categoryId")
+    suspend fun resetVodCategory(sourceId: Long, kind: VodKind, categoryId: String)
+
+    @Query("DELETE FROM renamed_groups WHERE sourceId = :sourceId")
+    suspend fun removeGroupsOf(sourceId: Long)
+
+    @Query("DELETE FROM renamed_vod_categories WHERE sourceId = :sourceId")
+    suspend fun removeVodCategoriesOf(sourceId: Long)
 }
 
 @Dao

@@ -41,7 +41,11 @@ import com.hayat.lumen.ui.components.LumenButton
 import com.hayat.lumen.ui.components.LumenListItem
 import com.hayat.lumen.ui.components.LumenTextField
 import com.hayat.lumen.ui.theme.LumenColors
-import com.hayat.lumen.ui.theme.SafeArea
+import com.hayat.lumen.ui.settings.RenameDialog
+import com.hayat.lumen.ui.settings.CategoryName
+import com.hayat.lumen.ui.settings.tickColor
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -75,7 +79,9 @@ class ManageCategoriesViewModel(private val live: LiveRepository, private val ep
                 source = source,
                 shown = rows.count { !it.hidden },
                 total = rows.size,
-                categories = if (source.hidden) emptyList() else rows.filter { q.isEmpty() || it.name.contains(q, ignoreCase = true) },
+                categories = if (source.hidden) emptyList() else rows.filter {
+                    q.isEmpty() || it.label.contains(q, ignoreCase = true) || it.name.contains(q, ignoreCase = true)
+                },
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -99,6 +105,10 @@ class ManageCategoriesViewModel(private val live: LiveRepository, private val ep
         viewModelScope.launch {
             if (row.hidden) live.showGroups(row.sourceId, listOf(row.name)) else live.hideGroups(row.sourceId, listOf(row.name))
         }
+    }
+
+    fun rename(row: CategoryRow, label: String) {
+        viewModelScope.launch { live.renameGroup(row.sourceId, row.name, label) }
     }
 
     fun toggleSource(source: SourceEntity) {
@@ -132,82 +142,79 @@ class ManageCategoriesViewModel(private val live: LiveRepository, private val ep
 }
 
 /**
- * Categories: tick which of the provider's categories show in Live, or hide a whole playlist.
- * Search, then "Hide all" / "Show all" acts on just the matches: handy for providers with hundreds of categories.
+ * Settings → Live categories: tick which of the provider's categories show in Live, rename them
+ * (hold OK), or hide a whole playlist. Search, then "Hide all" / "Show all" acts on just the
+ * matches: handy for providers with hundreds of categories.
  */
 @Composable
-fun ManageCategoriesScreen() {
+fun LiveCategoriesSection(modifier: Modifier = Modifier) {
     val container = LocalAppContainer.current
     val vm = viewModel { ManageCategoriesViewModel(container.live, container.epg) }
     val sections by vm.sections.collectAsStateWithLifecycle()
     val query by vm.query.collectAsStateWithLifecycle()
-    val firstRow = remember { FocusRequester() }
     val searching = query.isNotBlank()
+    var renaming by remember { mutableStateOf<CategoryRow?>(null) }
 
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(LumenColors.Background)
-            .padding(horizontal = SafeArea.Horizontal, vertical = SafeArea.Vertical),
-        contentAlignment = Alignment.TopCenter,
-    ) {
-        Column(Modifier.widthIn(max = 900.dp)) {
-            Text("Categories", style = MaterialTheme.typography.displaySmall, color = LumenColors.TextPrimary)
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Choose what shows in Live. Hidden categories keep their favourites on Home. " +
-                    "In Live, hold OK on a category to hide it.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = LumenColors.TextSecondary,
+    Column(modifier) {
+        Text(
+            "OK shows or hides a category in Live; hold OK to rename it. OK on a playlist hides all of it.",
+            style = MaterialTheme.typography.bodyLarge,
+            color = LumenColors.TextSecondary,
+        )
+        Spacer(Modifier.height(24.dp))
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            LumenTextField(
+                value = query,
+                onValueChange = { vm.query.value = it },
+                label = "Search",
+                placeholder = "e.g. Sports, UK, Arabic",
+                modifier = Modifier.weight(1f),
             )
-            Spacer(Modifier.height(24.dp))
-            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                LumenTextField(
-                    value = query,
-                    onValueChange = { vm.query.value = it },
-                    label = "Search",
-                    placeholder = "e.g. Sports, UK, Arabic",
-                    modifier = Modifier.weight(1f),
-                )
-                LumenButton(text = if (searching) "Show these" else "Show all", onClick = { vm.setAll(hidden = false) })
-                LumenButton(text = if (searching) "Hide these" else "Hide all", onClick = { vm.setAll(hidden = true) })
-            }
-            Spacer(Modifier.height(16.dp))
-            LazyColumn(
-                modifier = Modifier.focusRestorer(),
-                contentPadding = PaddingValues(vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                sections.forEachIndexed { index, section ->
-                    item(key = "source/${section.source.id}") {
-                        SourceRow(
-                            section = section,
-                            onClick = { vm.toggleSource(section.source) },
-                            modifier = Modifier
-                                .padding(top = if (index == 0) 0.dp else 16.dp)
-                                .then(if (index == 0) Modifier.focusRequester(firstRow) else Modifier),
+            LumenButton(text = if (searching) "Show these" else "Show all", onClick = { vm.setAll(hidden = false) })
+            LumenButton(text = if (searching) "Hide these" else "Hide all", onClick = { vm.setAll(hidden = true) })
+        }
+        Spacer(Modifier.height(16.dp))
+        LazyColumn(
+            modifier = Modifier.focusRestorer(),
+            contentPadding = PaddingValues(vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            sections.forEachIndexed { index, section ->
+                item(key = "source/${section.source.id}") {
+                    SourceRow(
+                        section = section,
+                        onClick = { vm.toggleSource(section.source) },
+                        modifier = Modifier.padding(top = if (index == 0) 0.dp else 16.dp),
+                    )
+                }
+                items(section.categories, key = { "group/${it.sourceId}/${it.name}" }) { row ->
+                    CategoryItem(row = row, onClick = { vm.toggle(row) }, onLongClick = { renaming = row })
+                }
+                if (searching && !section.source.hidden && section.categories.isEmpty()) {
+                    item(key = "empty/${section.source.id}") {
+                        Text(
+                            "No categories match “${query.trim()}”.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = LumenColors.TextTertiary,
+                            modifier = Modifier.padding(16.dp),
                         )
-                    }
-                    items(section.categories, key = { "group/${it.sourceId}/${it.name}" }) { row ->
-                        CategoryItem(row = row, onClick = { vm.toggle(row) })
-                    }
-                    if (searching && !section.source.hidden && section.categories.isEmpty()) {
-                        item(key = "empty/${section.source.id}") {
-                            Text(
-                                "No categories match “${query.trim()}”.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = LumenColors.TextTertiary,
-                                modifier = Modifier.padding(16.dp),
-                            )
-                        }
                     }
                 }
             }
         }
     }
 
-    LaunchedEffect(sections.isNotEmpty()) {
-        if (sections.isNotEmpty()) runCatching { firstRow.requestFocus() }
+    renaming?.let { row ->
+        RenameDialog(
+            title = "Rename category",
+            current = row.label,
+            original = row.name,
+            onSave = {
+                vm.rename(row, it)
+                renaming = null
+            },
+            onDismiss = { renaming = null },
+        )
     }
 }
 
@@ -237,29 +244,17 @@ private fun SourceRow(section: CategorySection, onClick: () -> Unit, modifier: M
     }
 }
 
-/** A category row: a tick when it shows in Live. OK toggles it. */
+/** A category row: a tick when it shows in Live. OK toggles it, hold OK renames it. */
 @Composable
-private fun CategoryItem(row: CategoryRow, onClick: () -> Unit) {
-    LumenListItem(onClick = onClick) {
+private fun CategoryItem(row: CategoryRow, onClick: () -> Unit, onLongClick: () -> Unit) {
+    LumenListItem(onClick = onClick, onLongClick = onLongClick) {
         // Fixed-width slot so names line up whether or not the tick is there.
         Box(Modifier.width(24.dp), contentAlignment = Alignment.Center) {
             if (!row.hidden) Text("✓", style = MaterialTheme.typography.titleMedium, color = tickColor())
         }
         // Hidden rows are dimmed; LocalContentColor still flips to dark on the focused (light) row.
         val color = LocalContentColor.current.let { if (row.hidden) it.copy(alpha = 0.5f) else it }
-        Text(
-            row.name,
-            style = MaterialTheme.typography.titleMedium,
-            color = color,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
+        CategoryName(row.label, original = row.name.takeIf { it != row.label }, color = color, modifier = Modifier.weight(1f))
         Text(NumberFormat.getIntegerInstance().format(row.channelCount), style = MaterialTheme.typography.labelMedium, color = color)
     }
 }
-
-/** The accent blue reads on the dark row but not on the light focused one, so follow the content colour there. */
-@Composable
-private fun tickColor() =
-    if (LocalContentColor.current == LumenColors.Background) LumenColors.Background else LumenColors.Accent

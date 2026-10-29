@@ -1,28 +1,17 @@
 package com.hayat.lumen.ui.guide
 
 import android.text.format.DateUtils
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -40,7 +29,6 @@ import com.hayat.lumen.data.epg.EpgRepository
 import com.hayat.lumen.ui.components.LumenButton
 import com.hayat.lumen.ui.components.LumenTextField
 import com.hayat.lumen.ui.theme.LumenColors
-import com.hayat.lumen.ui.theme.SafeArea
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -71,53 +59,35 @@ class GuideSettingsViewModel(live: LiveRepository, private val epg: EpgRepositor
     fun update(sourceId: Long) = epg.updateInBackground(sourceId)
 }
 
-/** TV guide settings: one guide link per playlist, its status, and Update now. */
+/** Settings → TV guide: one guide link per playlist, its status, and Update now. */
 @Composable
-fun GuideSettingsScreen() {
+fun GuideSettingsSection(modifier: Modifier = Modifier) {
     val container = LocalAppContainer.current
     val vm = viewModel { GuideSettingsViewModel(container.live, container.epg) }
     val sources by vm.sources.collectAsStateWithLifecycle()
-    val firstField = remember { FocusRequester() }
 
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(LumenColors.Background)
-            .padding(horizontal = SafeArea.Horizontal, vertical = SafeArea.Vertical),
-        contentAlignment = Alignment.TopCenter,
+    Column(
+        modifier.verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(32.dp),
     ) {
-        Column(
-            Modifier.widthIn(max = 820.dp).verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(32.dp),
-        ) {
-            Column {
-                Text("TV guide", style = MaterialTheme.typography.displaySmall, color = LumenColors.TextPrimary)
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Lumen shows what's on now and next from an XMLTV guide. Xtream logins use your provider's guide " +
-                        "automatically; paste a link to use a different one.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = LumenColors.TextSecondary,
-                )
-            }
-            sources.forEachIndexed { index, item ->
-                SourceGuide(
-                    item = item,
-                    onSave = { vm.save(item.source.id, it) },
-                    onUpdate = { vm.update(item.source.id) },
-                    fieldFocus = firstField.takeIf { index == 0 },
-                )
-            }
+        Text(
+            "Lumen shows what's on now and next from an XMLTV guide. Xtream logins use your provider's guide " +
+                "automatically; paste a link to use a different one.",
+            style = MaterialTheme.typography.bodyLarge,
+            color = LumenColors.TextSecondary,
+        )
+        sources.forEach { item ->
+            SourceGuide(
+                item = item,
+                onSave = { vm.save(item.source.id, it) },
+                onUpdate = { vm.update(item.source.id) },
+            )
         }
-    }
-
-    LaunchedEffect(sources.isNotEmpty()) {
-        if (sources.isNotEmpty()) runCatching { firstField.requestFocus() }
     }
 }
 
 @Composable
-private fun SourceGuide(item: GuideSourceUi, onSave: (String) -> Unit, onUpdate: () -> Unit, fieldFocus: FocusRequester?) {
+private fun SourceGuide(item: GuideSourceUi, onSave: (String) -> Unit, onUpdate: () -> Unit) {
     val source = item.source
     // Only a link the user (or the playlist's url-tvg) set is shown. The automatic Xtream
     // link has the password in it, so it never appears on screen.
@@ -133,7 +103,6 @@ private fun SourceGuide(item: GuideSourceUi, onSave: (String) -> Unit, onUpdate:
             label = "Guide link (XMLTV)",
             placeholder = if (source.type == SourceType.XTREAM) "Automatic: your provider's guide" else "http://…/guide.xml.gz",
             keyboardType = KeyboardType.Uri,
-            modifier = if (fieldFocus != null) Modifier.focusRequester(fieldFocus) else Modifier,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             LumenButton(text = "Save", onClick = { onSave(url) }, enabled = !busy && url.trim() != source.epgUrl.orEmpty())

@@ -33,6 +33,12 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
 - **Over-the-air updates.** Merged into main (PR #11). Not yet checked on the TV.
   - Home shows "Update to 0.3.0" when GitHub Releases has a newer version → Update screen: what's new, Install update
     (first time: "Allow updates" opens Android's Install unknown apps switch), download progress, Android's confirm.
+- **Settings page (0.4.0).** Built on branch `claude/project-thread-p17iln`. Not yet checked on the TV.
+  - "Settings" pill at the end of the top tabs (blue dot while an update waits; Home's hint line says so too; the old
+    "Update to …" button on Home is gone). Menu left, section right: Playlists (OK = Refresh / Rename / Change link or
+    login / Hide / Remove, plus Add playlist), TV guide, Live categories (OK hide, hold OK rename), Movie and Series
+    categories (same), Ratings (the user's OMDb key), Updates, About. Live's Categories and the guide's Guide settings
+    open it on their section.
   - Not in Phase 1: Left sidebar and Right mini guide in the player (Phases 3/6), logos (Phase 4), settings/source editing (Phase 6).
 
 ## Decisions
@@ -108,6 +114,14 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
   Starts after 1 s of buffer. OkHttp data source (follows http→https redirects).
   Zapping is debounced 350 ms, and the old stream is stopped at once (providers often allow 1 connection).
   Up = previous in list, Down = next; CH+/CH- keys = next/previous.
+- **Renames** (DB v6, auto-migration from v5): `renamed_groups (sourceId, groupName, label)` and
+  `renamed_vod_categories (sourceId, kind, categoryId, label)`. Display only: queries return the provider's name as the key
+  (`GroupRow.name`, `PlayableChannel.groupName`) plus `label`/`groupLabel` to show; VOD rows' `name` is already the label.
+  Saving a blank name or the provider's own removes the rename. Playlist renames just change `sources.name`.
+- **Changing a playlist's link/login** (`LiveRepository.changeConnection`): saves it, refreshes, and puts the old one back if
+  the import fails. The old M3U link is never shown (it may hold credentials); a blank Xtream password keeps the old one.
+- **Settings store** (`data/settings/Preferences.kt`): SharedPreferences for non-playlist settings (the OMDb key, which is
+  the user's own and must never be committed or logged; `data/ratings/OmdbClient` checks it).
 - **VOD** (`data/vod/`, DB v5, auto-migration from v4): Xtream only. `movies`, `series`, `vod_categories` stored under
   `sources.vodGeneration` (same swap idea as channels), ~35k films + 9k series on the owner's provider.
   Loaded in the background at launch if older than 24 h, after adding a playlist, and with Live's Refresh.

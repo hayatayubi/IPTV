@@ -237,7 +237,7 @@ private fun InfoOverlay(tuned: Tuned, nowNext: NowNext?, status: Status) {
                 val now = nowNext?.now
                 if (now == null) {
                     Text(
-                        channel.groupName,
+                        channel.groupLabel,
                         style = MaterialTheme.typography.bodyLarge,
                         color = LumenColors.TextSecondary,
                         maxLines = 1,

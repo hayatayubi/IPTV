@@ -19,12 +19,12 @@ import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import com.hayat.lumen.LocalAppContainer
 import com.hayat.lumen.ui.addsource.AddSourceScreen
-import com.hayat.lumen.ui.categories.ManageCategoriesScreen
 import com.hayat.lumen.ui.guide.GuideScreen
-import com.hayat.lumen.ui.guide.GuideSettingsScreen
 import com.hayat.lumen.ui.home.HomeScreen
 import com.hayat.lumen.ui.live.LiveScreen
 import com.hayat.lumen.ui.player.PlayerScreen
+import com.hayat.lumen.ui.settings.SettingsScreen
+import com.hayat.lumen.ui.settings.SettingsSection
 import com.hayat.lumen.ui.update.UpdateScreen
 import com.hayat.lumen.data.db.Poster
 import com.hayat.lumen.data.db.VodCategoryRow
@@ -48,8 +48,8 @@ data object LiveRoute : Route
 data class PlayerRoute(val channelId: Long, val inFavourites: Boolean = false) : Route
 /** The TV guide grid. */
 data object GuideRoute : Route
-data object GuideSettingsRoute : Route
-data object ManageCategoriesRoute : Route
+/** Settings, opened on [section] (Live's Categories button opens it on Live categories). */
+data class SettingsRoute(val section: SettingsSection = SettingsSection.PLAYLISTS) : Route
 /** "Update Lumen": install a newer version from GitHub Releases. */
 data object UpdateRoute : Route
 /** The Movies and Series tabs. They sit right above Home in the back stack, so Back returns to Live TV. */
@@ -92,11 +92,17 @@ fun LumenRoot(onExit: () -> Unit) {
 
     // Tabs swap the screen above Home rather than stacking up, like a tab bar.
     val onTab: (Tab) -> Unit = { tab ->
-        backStack.removeAll { it == MoviesTabRoute || it == SeriesTabRoute }
-        when (tab) {
-            Tab.LIVE -> Unit
-            Tab.MOVIES -> backStack.add(MoviesTabRoute)
-            Tab.SERIES -> backStack.add(SeriesTabRoute)
+        if (tab == Tab.SETTINGS) {
+            // Opens on Updates while one is waiting: that's what the blue dot points at.
+            val section = if (container.updates.available.value != null) SettingsSection.UPDATES else SettingsSection.PLAYLISTS
+            backStack.add(SettingsRoute(section))
+        } else {
+            backStack.removeAll { it == MoviesTabRoute || it == SeriesTabRoute }
+            when (tab) {
+                Tab.MOVIES -> backStack.add(MoviesTabRoute)
+                Tab.SERIES -> backStack.add(SeriesTabRoute)
+                else -> Unit
+            }
         }
     }
     val openPoster: (Poster) -> Unit = { p ->
@@ -123,11 +129,16 @@ fun LumenRoot(onExit: () -> Unit) {
                 AddSourceScreen(onAdded = {
                     container.epg.updateStaleInBackground() // load the new playlist's guide
                     container.vod.refreshStaleInBackground() // and its films and series
-                    // Replace "Add" with Home, then open Live on top: there are no favourites yet.
-                    // Back from Live goes to Home; Back from Home exits.
-                    backStack.add(HomeRoute)
-                    backStack.removeAll { it != HomeRoute }
-                    backStack.add(LiveRoute)
+                    if (backStack.size > 1) {
+                        // Added from Settings: back to the list, which now shows it.
+                        backStack.removeAt(backStack.lastIndex)
+                    } else {
+                        // First playlist: replace "Add" with Home, then open Live on top (no favourites yet).
+                        // Back from Live goes to Home; Back from Home exits.
+                        backStack.add(HomeRoute)
+                        backStack.removeAll { it != HomeRoute }
+                        backStack.add(LiveRoute)
+                    }
                 })
             }
             entry<HomeRoute> {
@@ -135,7 +146,6 @@ fun LumenRoot(onExit: () -> Unit) {
                     onPlay = { backStack.add(PlayerRoute(it, inFavourites = true)) },
                     onBrowse = { backStack.add(LiveRoute) },
                     onOpenGuide = { backStack.add(GuideRoute) },
-                    onOpenUpdate = { backStack.add(UpdateRoute) },
                     onTab = onTab,
                 )
             }
@@ -143,23 +153,29 @@ fun LumenRoot(onExit: () -> Unit) {
                 LiveScreen(
                     onPlay = { backStack.add(PlayerRoute(it)) },
                     onOpenGuide = { backStack.add(GuideRoute) },
-                    onManageCategories = { backStack.add(ManageCategoriesRoute) },
+                    onManageCategories = { backStack.add(SettingsRoute(SettingsSection.LIVE_CATEGORIES)) },
                 )
             }
             entry<GuideRoute> {
                 GuideScreen(
                     onPlay = { id, inFavourites -> backStack.add(PlayerRoute(id, inFavourites)) },
-                    onOpenSettings = { backStack.add(GuideSettingsRoute) },
+                    onOpenSettings = { backStack.add(SettingsRoute(SettingsSection.GUIDE)) },
                 )
             }
             entry<PlayerRoute> { route ->
                 PlayerScreen(channelId = route.channelId, inFavourites = route.inFavourites)
             }
-            entry<GuideSettingsRoute> {
-                GuideSettingsScreen()
-            }
-            entry<ManageCategoriesRoute> {
-                ManageCategoriesScreen()
+            entry<SettingsRoute> { route ->
+                SettingsScreen(
+                    initial = route.section,
+                    onAddPlaylist = { backStack.add(AddSourceRoute) },
+                    onNoPlaylists = {
+                        // Nothing left to watch: start over on "Add a playlist".
+                        backStack.add(AddSourceRoute)
+                        backStack.removeAll { it != AddSourceRoute }
+                    },
+                    onOpenUpdate = { backStack.add(UpdateRoute) },
+                )
             }
             entry<UpdateRoute> {
                 UpdateScreen()

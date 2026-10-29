@@ -105,7 +105,6 @@ fun HomeScreen(
     onPlay: (channelId: Long) -> Unit,
     onBrowse: () -> Unit,
     onOpenGuide: () -> Unit,
-    onOpenUpdate: () -> Unit,
     onTab: (Tab) -> Unit,
 ) {
     val container = LocalAppContainer.current
@@ -187,10 +186,6 @@ fun HomeScreen(
                 // A weighted child is measured last in a Row (like a low compression-resistance
                 // priority in Auto Layout), so the buttons always get their full width first.
                 Spacer(Modifier.weight(1f))
-                update?.let {
-                    LumenButton(text = "Update to ${it.version}", onClick = onOpenUpdate)
-                    Spacer(Modifier.width(12.dp))
-                }
                 LumenButton(text = "All channels", onClick = onBrowse, modifier = Modifier.focusRequester(buttonFocus))
                 Spacer(Modifier.width(12.dp))
                 LumenButton(text = "TV guide", onClick = onOpenGuide)
@@ -209,10 +204,15 @@ fun HomeScreen(
                 Hero(hero, hero?.let { guide[it.id] }, Modifier.weight(1f).fillMaxWidth())
                 // The hint sits with the cards it's about (it used to share the top line, where an
                 // "Update to …" button ran over it).
+                val ready = update
                 Text(
-                    if (moving != null) "Move with the arrows, then press OK" else "Hold OK on a favourite to move or remove it",
+                    when {
+                        moving != null -> "Move with the arrows, then press OK"
+                        ready != null -> "Lumen ${ready.version} is ready. Open Settings to update."
+                        else -> "Hold OK on a favourite to move or remove it"
+                    },
                     style = MaterialTheme.typography.bodySmall,
-                    color = LumenColors.TextTertiary,
+                    color = if (ready != null && moving == null) LumenColors.Accent else LumenColors.TextTertiary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(start = GridPadding),
