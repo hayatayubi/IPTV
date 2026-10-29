@@ -18,6 +18,8 @@ data class Ratings(
     val rottenTomatoes: String?,
     /** The age rating, e.g. "PG-13" or "12A". */
     val age: String?,
+    /** How many people rated it on IMDb, e.g. 32756. */
+    val imdbVotes: Int? = null,
 ) {
     val isEmpty get() = imdb == null && rottenTomatoes == null && age == null
 }
@@ -94,6 +96,7 @@ class OmdbClient(private val http: OkHttpClient) {
             imdb = clean(json.optString("imdbRating")),
             rottenTomatoes = tomatoes,
             age = clean(json.optString("Rated"))?.takeUnless { it == "Not Rated" || it == "Unrated" },
+            imdbVotes = clean(json.optString("imdbVotes"))?.filter { it.isDigit() }?.toIntOrNull(), // "32,756"
         )
     }.getOrNull()
 

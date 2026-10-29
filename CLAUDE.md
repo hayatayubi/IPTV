@@ -169,7 +169,8 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
   details panel with the focused live channel previewing muted on the right (`ui/components/LivePreview.kt`, shared with
   Home). VOD: full-screen backdrops, category tiles (3 fanned posters) at the top of each tab, heart = My List.
 - **Ratings**: `data/ratings/OmdbClient.ratings(key, title, year, series)` (OMDb `t=`/`y=`/`type=`), in-memory LRU, null
-  without the user's key. Shown by `RatingsRow` (drawn IMDb mark, tomato/splat, age box) in `HeroText`; the provider's
+  without the user's key. Shown big, as in Chillio, by `RatingsPanel` (drawn tomato/splat + "Tomatometer", IMDb box + votes, age box): its own
+  "Ratings" row under the film page's buttons, at the right of the series page's buttons; the provider's
   ★ shows only when OMDb has nothing. Common Sense Media has no free API (paid licence), so the age rating stands in.
 - Screenshots in cloud sessions: Robolectric 4.17 + Roborazzi render screens with test data (kept out of the repo:
   needs `robolectric.dependency.repo.url` = the Google Maven mirror, `roborazzi.test.record=true`, the compose clock

@@ -132,42 +132,71 @@ suspend fun OmdbClient.addRatings(hero: HeroInfo, key: String?, series: Boolean)
     ratings(key, hero.title, hero.year, series)?.let { hero.copy(ratings = it) } ?: hero
 
 /**
- * IMDb, Rotten Tomatoes and the age rating, Apple TV style: a small mark and the score.
- * The marks are drawn, not the services' logos.
+ * IMDb, Rotten Tomatoes and the age rating, large as in Chillio: a big mark, the score,
+ * and what it is underneath. The marks are drawn, not the services' logos.
  */
 @Composable
-fun RatingsRow(ratings: Ratings, modifier: Modifier = Modifier) {
-    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-        ratings.imdb?.let {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    "IMDb",
-                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                    color = Color.Black,
-                    modifier = Modifier.background(ImdbYellow, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
-                )
-                Text(it, style = MaterialTheme.typography.titleMedium, color = LumenColors.TextPrimary)
-            }
-        }
+fun RatingsPanel(ratings: Ratings, modifier: Modifier = Modifier, ageCaption: Boolean = true) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (ageCaption) 48.dp else 36.dp)) {
         ratings.rottenTomatoes?.let {
             val fresh = (it.removeSuffix("%").toIntOrNull() ?: 0) >= 60
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Tomato(fresh, Modifier.size(20.dp))
-                Text(it, style = MaterialTheme.typography.titleMedium, color = LumenColors.TextPrimary)
+            Rating(score = it, caption = "Tomatometer") { Tomato(fresh, Modifier.size(MarkSize)) }
+        }
+        ratings.imdb?.let {
+            Rating(score = it, caption = ratings.imdbVotes?.let(::formatVotes) ?: "IMDb") {
+                Box(
+                    Modifier.size(MarkSize).background(ImdbYellow, RoundedCornerShape(8.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        "IMDb",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                        color = Color.Black,
+                    )
+                }
             }
         }
         ratings.age?.let {
-            Text(
-                it,
-                style = MaterialTheme.typography.labelLarge,
-                color = LumenColors.TextPrimary,
-                modifier = Modifier
-                    .border(1.dp, LumenColors.TextSecondary, RoundedCornerShape(4.dp))
-                    .padding(horizontal = 6.dp, vertical = 1.dp),
-            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Box(
+                    Modifier
+                        .height(MarkSize)
+                        .widthIn(min = MarkSize)
+                        .border(2.dp, LumenColors.TextSecondary, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 10.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(it, style = MaterialTheme.typography.headlineSmall, color = LumenColors.TextPrimary, maxLines = 1)
+                }
+                if (ageCaption) Text("Age rating", style = MaterialTheme.typography.bodyLarge, color = LumenColors.TextSecondary)
+            }
         }
     }
 }
+
+@Composable
+private fun Rating(score: String, caption: String, mark: @Composable () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        mark()
+        Column {
+            Text(score, style = MaterialTheme.typography.headlineMedium, color = LumenColors.TextPrimary)
+            Text(caption, style = MaterialTheme.typography.bodyLarge, color = LumenColors.TextSecondary)
+        }
+    }
+}
+
+/** "32.7K votes", "1.2M votes". */
+fun formatVotes(votes: Int): String {
+    fun short(v: Double, unit: String) = "%.1f".format(v).removeSuffix(".0") + unit
+    val n = when {
+        votes >= 1_000_000 -> short(votes / 1_000_000.0, "M")
+        votes >= 1_000 -> short(votes / 1_000.0, "K")
+        else -> votes.toString()
+    }
+    return "$n votes"
+}
+
+private val MarkSize = 52.dp
 
 /** A little tomato: red and round when fresh (60% and up), a green splat when rotten. */
 @Composable
@@ -231,7 +260,7 @@ fun BoxScope.Backdrop(hero: HeroInfo?, widthFraction: Float = 0.72f, heightFract
     }
 }
 
-/** Title, tags, the meta line and the plot. */
+/** Title, tags, the meta line and the plot. (The detail pages show [RatingsPanel] themselves.) */
 @Composable
 fun HeroText(
     hero: HeroInfo?,
@@ -253,10 +282,6 @@ fun HeroText(
                         modifier = Modifier.weight(1f, fill = false),
                     )
                     shown.tags.forEach { QualityTag(it) }
-                }
-                shown.ratings?.let {
-                    Spacer(Modifier.height(10.dp))
-                    RatingsRow(it)
                 }
                 if (shown.meta.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))

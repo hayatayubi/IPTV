@@ -167,12 +167,32 @@ fun SeriesDetailScreen(sourceId: Long, seriesId: String, onPlay: (episodeId: Str
                     onClick = vm::toggleMyList,
                     icon = if (inMyList) R.drawable.ic_heart else R.drawable.ic_heart_outline,
                 )
+                // Weighted, so these messages take only the room the scores leave (weighted children are measured last).
                 (state as? EpisodesState.Failed)?.let { failed ->
-                    Text(failed.message, style = MaterialTheme.typography.bodyMedium, color = LumenColors.TextSecondary)
+                    Text(
+                        failed.message,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = LumenColors.TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
                     LumenButton(text = "Try again", onClick = vm::load)
                 }
                 if (state is EpisodesState.Loading) {
-                    Text("Loading episodes…", style = MaterialTheme.typography.bodyMedium, color = LumenColors.TextTertiary)
+                    Text(
+                        "Loading episodes…",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = LumenColors.TextTertiary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                }
+                // The scores, big, at the right of the buttons: the episodes leave no room for a row of their own.
+                hero?.ratings?.let {
+                    Spacer(Modifier.weight(1f))
+                    RatingsPanel(it, ageCaption = false)
                 }
             }
             if (seasons.isNotEmpty()) {

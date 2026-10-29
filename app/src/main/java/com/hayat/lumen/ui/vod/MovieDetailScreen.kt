@@ -5,6 +5,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -101,7 +104,7 @@ fun MovieDetailScreen(sourceId: Long, streamId: String, onPlay: (startOver: Bool
                 .padding(top = 40.dp),
             verticalArrangement = Arrangement.Bottom,
         ) {
-            HeroText(hero, Modifier.fillMaxWidth(), plotLines = 4, titleStyle = MaterialTheme.typography.displayMedium)
+            HeroText(hero, Modifier.fillMaxWidth(), plotLines = 3, titleStyle = MaterialTheme.typography.displayMedium)
             hero?.let { h ->
                 val credits = listOfNotNull(h.cast?.let { "Starring  $it" }, h.director?.let { "Director  $it" })
                 credits.forEach {
@@ -144,6 +147,19 @@ fun MovieDetailScreen(sourceId: Long, streamId: String, onPlay: (startOver: Bool
                         style = MaterialTheme.typography.bodyMedium,
                         color = LumenColors.TextSecondary,
                     )
+                }
+            }
+            // As in Chillio: the scores get their own big row under the buttons. They arrive a moment
+            // after the page (an OMDb lookup), so they slide in rather than make the page jump.
+            val ratings = hero?.ratings
+            AnimatedVisibility(ratings != null, enter = fadeIn() + expandVertically()) {
+                if (ratings != null) {
+                    Column {
+                        Spacer(Modifier.height(28.dp))
+                        Text("Ratings", style = MaterialTheme.typography.titleMedium, color = LumenColors.TextSecondary)
+                        Spacer(Modifier.height(12.dp))
+                        RatingsPanel(ratings)
+                    }
                 }
             }
         }
