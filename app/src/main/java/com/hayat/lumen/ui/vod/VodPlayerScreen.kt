@@ -294,11 +294,9 @@ fun VodPlayerScreen(sourceId: Long, kind: VodKind, itemId: String, seriesId: Str
                     Key.DirectionLeft, Key.MediaRewind -> { buttonFocused = false; seekBy(-1, repeat, event.nativeKeyEvent.eventTime); true }
                     Key.DirectionRight, Key.MediaFastForward -> { buttonFocused = false; seekBy(+1, repeat, event.nativeKeyEvent.eventTime); true }
                     Key.DirectionUp -> {
-                        when {
-                            buttonFocused -> { buttonFocused = false; showControls() }
-                            hasChoices -> panel = true // still a shortcut
-                            else -> showControls()
-                        }
+                        // Only the button opens audio and subtitles (Hayat: Up opened it by accident).
+                        buttonFocused = false
+                        showControls()
                         true
                     }
                     Key.DirectionDown -> {

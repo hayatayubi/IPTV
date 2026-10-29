@@ -29,7 +29,7 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
     bottom of the tab. Search (films + series) from the tab. Film page: Play / Resume from 42:10 / Start over / My List.
     Series page: Resume S1 · E3, seasons, episodes with progress. Player: OK pause, Left/Right 10 s (quick taps grow to 30 s, 1 min; holding ramps from 1 min/s to 20 min/s
     by hold time, see `SeekRamp`; "+12:30" shows while seeking),
-    Up (or Down to the "Audio & Subtitles" button, then OK) = audio/subtitles; long track lists show the chosen track,
+    Down to the "Audio & Subtitles" button, then OK = audio/subtitles (only way: Up does nothing since 0.7.0); long track lists show the chosen track,
     the TV's language and English first, the rest behind "More languages" (`TrackPicks`, tested).
     Up next countdown at the end of an episode.
 - **Over-the-air updates.** Merged into main (PR #11). Not yet checked on the TV.
@@ -39,7 +39,7 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
   the Home and guide screenshots 2026-10-29). Colour instead of black, frosted glass, white focus, big VOD backdrops,
   IMDb / Rotten Tomatoes / age rating on film and series pages.
 - **Guide in the player (0.6.0).** Built on branch `claude/project-thread-p17iln`. Not yet checked on the TV.
-  - Right while a channel plays opens a glass strip (`ui/player/PlayerGuide.kt`) with that channel's programmes for the next
+  - OK or Right (OK since 0.7.0; the info overlay still shows on zapping) while a channel plays opens a glass strip (`ui/player/PlayerGuide.kt`) with that channel's programmes for the next
     24 h. Left/Right = programmes, Up/Down (and CH+/-) = the guide of the channel above/below in the zapping list while the
     stream keeps playing (keeps the same time, `GuidePick`), OK = watch that channel, Back or 12 s idle = close.
     Programmes are plain time + title text, no boxes (Hayat: boxes looked selectable), selected = bright + white underline.
@@ -206,7 +206,9 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
 - Build: `./gradlew assembleDebug` · Tests: `./gradlew testDebugUnitTest` · Lint: `./gradlew lintDebug`.
 - **Judge smoothness only on release builds.** Debug Compose builds are visibly janky on the Chromecast; release
   (`./gradlew assembleRelease`, R8 + same shared key, installs over debug) was confirmed smooth on the TV.
-  After sideloading, `adb shell cmd package compile -f -m speed-profile com.hayat.lumen` applies the baseline profile right away.
+  Startup profile: the libraries ship theirs, and `app/src/main/baseline-prof.txt` (0.7.0) adds wildcard rules for all of
+  Lumen's own code; profileinstaller (a transitive dependency) applies them after install/update, in the background.
+  After sideloading, `adb shell cmd package compile -f -m speed-profile com.hayat.lumen` applies them right away.
 - Typing a URL on the TV: open the field with OK, then `adb shell "input text 'http://…'"` from the laptop
   (inner single quotes stop the device shell from eating `&`).
 - Cloud sessions: Maven Central rate-limits (429) the shared egress IP. Use a Gradle init script in
