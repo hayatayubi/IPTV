@@ -28,7 +28,7 @@ object ChannelNames {
         "ABC", "AMC", "AXN", "BBC", "BET", "BT", "CBS", "CNBC", "CNN", "DAZN", "E4", "ESPN", "EPL", "EWTN",
         "FX", "GB", "HBO", "HGTV", "ITV", "ITV1", "ITV2", "ITV3", "ITV4", "ITVBE", "MTV", "NBA", "NBC", "NFL",
         "NHL", "PBS", "QVC", "RTE", "S4C", "STV", "TBS", "TCM", "TF1", "TLC", "TNT", "TV", "UFC", "UK", "US",
-        "USA", "WWE", "MLB", "MUTV", "LFCTV", "BBC1", "BBC2", "TG4", "UTV",
+        "USA", "WWE", "MLB", "MUTV", "LFCTV", "BBC1", "BBC2", "TG4", "UTV", "OSN",
     )
 
     fun display(raw: String): DisplayName {
@@ -57,7 +57,7 @@ object ChannelNames {
     private fun titleCase(name: String): String = name.split(' ').joinToString(" ") { word ->
         val letters = word.filter { it.isLetter() }
         when {
-            word.uppercase() in acronyms -> word
+            word.uppercase().trimEnd('+') in acronyms -> word // "OSN+" too
             letters.length <= 1 -> word
             // No vowels, or mixed with digits: an abbreviation like "TNT" or "5USA".
             letters.none { it.uppercaseChar() in "AEIOUY" } -> word

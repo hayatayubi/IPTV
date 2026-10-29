@@ -1,9 +1,7 @@
 package com.hayat.lumen.ui.vod
 
 import android.widget.Toast
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -19,15 +17,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
-import com.hayat.lumen.ui.components.LumenCard
-import coil3.compose.AsyncImage
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,7 +38,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.foundation.BorderStroke
+import androidx.tv.material3.Border
+import androidx.tv.material3.ClickableSurfaceDefaults
+import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import com.hayat.lumen.LocalAppContainer
 import com.hayat.lumen.data.db.Poster
@@ -55,6 +51,8 @@ import com.hayat.lumen.data.db.VodCategoryRow
 import com.hayat.lumen.data.db.VodKind
 import com.hayat.lumen.data.vod.VodSync
 import com.hayat.lumen.ui.components.LumenButton
+import com.hayat.lumen.ui.components.QualityTag
+import com.hayat.lumen.util.CategoryNames
 import com.hayat.lumen.ui.components.PosterCard
 import com.hayat.lumen.ui.components.SeeAllCard
 import com.hayat.lumen.ui.components.Tab
@@ -168,19 +166,16 @@ fun VodBrowseScreen(
                         modifier = Modifier.fillMaxWidth().height(RowsHeight),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        // Chillio's category tiles: the name on glass with a fan of its posters.
-                        if (rows.size > 1) {
-                            item(key = "tiles") {
+                        // Every category as a small pill, a quick way to "See all" of one.
+                        if (rows.size > 1 && showCategoryChips) {
+                            item(key = "chips") {
                                 LazyRow(
                                     modifier = Modifier.fillMaxWidth().focusRestorer(),
-                                    contentPadding = PaddingValues(vertical = 14.dp, horizontal = 10.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(24.dp),
+                                    contentPadding = PaddingValues(vertical = 12.dp, horizontal = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 ) {
-                                    items(rows.take(TILES), key = { "${it.sourceId}/${it.categoryId}" }) { row ->
-                                        val covers by produceState<List<Poster>>(emptyList(), row.sourceId, row.categoryId, row.generation) {
-                                            value = vm.covers(row)
-                                        }
-                                        CategoryTile(row.name, covers, onClick = { onSeeAll(row) })
+                                    items(rows, key = { "${it.sourceId}/${it.categoryId}" }) { row ->
+                                        CategoryChip(row.name, row.itemCount, onClick = { onSeeAll(row) })
                                     }
                                 }
                             }
@@ -207,9 +202,10 @@ fun VodBrowseScreen(
                         itemsIndexed(rows, key = { _, r -> "${r.sourceId}/${r.categoryId}" }) { rowIndex, row ->
                             val rowKey = "${row.sourceId}/${row.categoryId}"
                             val posters by produceState<List<Poster>>(emptyList(), row.sourceId, row.categoryId, row.generation) {
-                                value = vm.posters(row)
+                                value = vm.posters(row, fillsHero = rowIndex == 0)
                             }
-                            PosterRow(row.name, formatCount(row.itemCount)) {
+                            val name = remember(row.name) { CategoryNames.display(row.name) }
+                            PosterRow(name.title, (name.tags + formatCount(row.itemCount)).joinToString("  ·  ")) {
                                 itemsIndexed(posters, key = { _, p -> p.key }) { i, p ->
                                     Card(rowKey, p, isFirst = categoriesFirst && rowIndex == 0 && i == 0) { toggleMyList(p) }
                                 }
@@ -277,37 +273,35 @@ private fun PosterRow(
 /** One row plus the next row's title peeking in, so you can tell there's more below. */
 private val RowsHeight = 290.dp
 
-private const val TILES = 10
+/** Whether the category pills show. A switch only while Hayat compares the tab with and without them. */
+internal var showCategoryChips = true
 
-/** A category as a wide glass tile: its name on the left, three of its posters fanned on the right. */
+/** A category as a glass pill: its tidied name, its quality tag and how many titles it has. */
 @Composable
-private fun CategoryTile(name: String, covers: List<Poster>, onClick: () -> Unit) {
-    val container = LocalAppContainer.current
-    LumenCard(onClick = onClick, modifier = Modifier.width(260.dp).height(104.dp)) {
-        Box(Modifier.fillMaxSize().background(LumenColors.GlassStrong)) {
-            Text(
-                name,
-                style = MaterialTheme.typography.titleMedium,
-                color = LumenColors.TextPrimary,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.align(Alignment.CenterStart).padding(start = 20.dp).width(120.dp),
-            )
-            // Back to front: the last poster sits on top, tilted like a hand of cards.
-            covers.take(3).forEachIndexed { i, poster ->
-                AsyncImage(
-                    model = poster.posterUrl,
-                    contentDescription = null,
-                    imageLoader = container.images,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .offset(x = (-12 - (2 - i) * 34).dp, y = 10.dp)
-                        .size(width = 62.dp, height = 93.dp)
-                        .graphicsLayer { rotationZ = -12f + i * 12f }
-                        .clip(RoundedCornerShape(8.dp)),
-                )
-            }
+private fun CategoryChip(name: String, count: Int, onClick: () -> Unit) {
+    val display = remember(name) { CategoryNames.display(name) }
+    Surface(
+        onClick = onClick,
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = LumenColors.Glass,
+            contentColor = LumenColors.TextPrimary,
+            focusedContainerColor = LumenColors.TextPrimary,
+            focusedContentColor = LumenColors.Background,
+        ),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(BorderStroke(1.dp, LumenColors.GlassEdge), shape = RoundedCornerShape(50)),
+        ),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 18.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(display.title, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+            display.tags.forEach { QualityTag(it, color = LocalContentColor.current.copy(alpha = 0.7f)) }
+            Text(formatCount(count), style = MaterialTheme.typography.labelMedium, color = LocalContentColor.current.copy(alpha = 0.55f))
         }
     }
 }
