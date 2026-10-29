@@ -35,6 +35,7 @@ fun LumenButton(
         ),
         scale = ButtonDefaults.scale(focusedScale = 1.05f),
     ) {
-        Text(text, style = MaterialTheme.typography.labelLarge)
+        // One line, always: squeezed for room, a button used to wrap its label ("TV gui / e").
+        Text(text, style = MaterialTheme.typography.labelLarge, maxLines = 1, softWrap = false)
     }
 }

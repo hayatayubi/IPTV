@@ -184,14 +184,8 @@ fun HomeScreen(
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 TopTabs(selected = Tab.LIVE, onSelect = onTab)
-                if (list.isNotEmpty()) {
-                    Text(
-                        if (moving != null) "Move with the arrows, then press OK" else "Hold OK on a favourite to move or remove it",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = LumenColors.TextTertiary,
-                        modifier = Modifier.padding(start = 16.dp, top = 4.dp),
-                    )
-                }
+                // A weighted child is measured last in a Row (like a low compression-resistance
+                // priority in Auto Layout), so the buttons always get their full width first.
                 Spacer(Modifier.weight(1f))
                 update?.let {
                     LumenButton(text = "Update to ${it.version}", onClick = onOpenUpdate)
@@ -213,6 +207,16 @@ fun HomeScreen(
                 )
             } else {
                 Hero(hero, hero?.let { guide[it.id] }, Modifier.weight(1f).fillMaxWidth())
+                // The hint sits with the cards it's about (it used to share the top line, where an
+                // "Update to …" button ran over it).
+                Text(
+                    if (moving != null) "Move with the arrows, then press OK" else "Hold OK on a favourite to move or remove it",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = LumenColors.TextTertiary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = GridPadding),
+                )
                 // Four across, so up to eight favourites show at once; more than that scroll.
                 BoxWithConstraints(Modifier.fillMaxWidth()) {
                     val cardWidth = (maxWidth - GridPadding * 2 - GridSpacing * (GridColumns - 1)) / GridColumns
