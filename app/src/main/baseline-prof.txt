@@ -1,0 +1,6 @@
+# Startup profile for Lumen's own code. The libraries (Compose, Media3, Room...) bring their own;
+# these rules add every class and method of the app, so Android compiles the screens ahead of time
+# when it installs (or updates) Lumen instead of interpreting them at first, which feels laggy.
+# Format: H = hot, S = used at startup, P = used after startup; L... is the JVM class name.
+HSPLcom/hayat/lumen/**->**(**)**
+Lcom/hayat/lumen/**;

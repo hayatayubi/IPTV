@@ -70,8 +70,8 @@ private enum class Status { LOADING, PLAYING, FAILED }
 
 /**
  * Full-screen live player.
- * Up/Down: previous/next channel in the group (or in favourites, when opened from Home) · OK: info overlay · Back: hide overlay, then leave.
- * Right opens the guide strip: Left/Right = programmes, Up/Down = other channels' guides (the stream
+ * Up/Down: previous/next channel in the group (or in favourites, when opened from Home), with a short info overlay ·
+ * Back: hide overlay, then leave. OK or Right opens the guide strip: Left/Right = programmes, Up/Down = other channels' guides (the stream
  * stays), OK = watch that channel, Back = close.
  */
 @OptIn(UnstableApi::class)
@@ -237,10 +237,15 @@ fun PlayerScreen(channelId: Long, inFavourites: Boolean) {
                     Key.DirectionDown, Key.ChannelUp -> { vm.step(+1); showOverlay(); true }
                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
                         if (event.nativeKeyEvent.repeatCount == 0) {
-                            when {
-                                status == Status.FAILED -> { retry++; showOverlay() }
-                                overlay -> overlay = false
-                                else -> showOverlay()
+                            if (status == Status.FAILED) {
+                                retry++
+                                showOverlay()
+                            } else {
+                                // OK opens the guide strip, which shows the channel and what's on too.
+                                overlay = false
+                                anchor = System.currentTimeMillis()
+                                vm.openGuide()
+                                guideInteraction++
                             }
                         }
                         true
