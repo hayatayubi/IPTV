@@ -19,6 +19,15 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import com.hayat.lumen.ui.components.LumenCard
+import coil3.compose.AsyncImage
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,6 +59,7 @@ import com.hayat.lumen.ui.components.PosterCard
 import com.hayat.lumen.ui.components.SeeAllCard
 import com.hayat.lumen.ui.components.Tab
 import com.hayat.lumen.ui.components.TopTabs
+import com.hayat.lumen.ui.components.Ambient
 import com.hayat.lumen.ui.components.formatCount
 import com.hayat.lumen.ui.theme.LumenColors
 import com.hayat.lumen.ui.theme.SafeArea
@@ -109,26 +119,21 @@ fun VodBrowseScreen(
         )
     }
 
-    Box(Modifier.fillMaxSize().background(LumenColors.Background)) {
-        Backdrop(hero)
+    Ambient {
+        // Big, like the Apple TV app: the focused title's backdrop fills most of the screen.
+        Backdrop(hero, widthFraction = 1f, heightFraction = 0.85f, leftFade = 0.55f)
         Column(Modifier.fillMaxSize().padding(horizontal = SafeArea.Horizontal, vertical = SafeArea.Vertical)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                TopTabs(selected = if (kind == VodKind.MOVIE) Tab.MOVIES else Tab.SERIES, onSelect = onTab, modifier = Modifier.focusRequester(tabsFocus))
-                Spacer(Modifier.weight(1f))
+            TopTabs(
+                selected = if (kind == VodKind.MOVIE) Tab.MOVIES else Tab.SERIES,
+                onSelect = { if (it == Tab.SEARCH) onSearch() else onTab(it) },
+                modifier = Modifier.focusRequester(tabsFocus),
+            ) {
                 val status = when (val s = sync) {
                     is VodSync.Running -> "Updating films and series… ${formatCount(s.movies + s.series)}"
                     is VodSync.Failed -> s.message
                     VodSync.Idle -> ""
                 }
-                Text(
-                    status,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = LumenColors.TextTertiary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(end = 16.dp).weight(1f, fill = false),
-                )
-                LumenButton(text = "Search", onClick = onSearch)
+                Text(status, style = MaterialTheme.typography.bodySmall, color = LumenColors.TextTertiary, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
 
             val rows = categories
@@ -163,6 +168,23 @@ fun VodBrowseScreen(
                         modifier = Modifier.fillMaxWidth().height(RowsHeight),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
+                        // Chillio's category tiles: the name on glass with a fan of its posters.
+                        if (rows.size > 1) {
+                            item(key = "tiles") {
+                                LazyRow(
+                                    modifier = Modifier.fillMaxWidth().focusRestorer(),
+                                    contentPadding = PaddingValues(vertical = 14.dp, horizontal = 10.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(24.dp),
+                                ) {
+                                    items(rows.take(TILES), key = { "${it.sourceId}/${it.categoryId}" }) { row ->
+                                        val covers by produceState<List<Poster>>(emptyList(), row.sourceId, row.categoryId, row.generation) {
+                                            value = vm.covers(row)
+                                        }
+                                        CategoryTile(row.name, covers, onClick = { onSeeAll(row) })
+                                    }
+                                }
+                            }
+                        }
                         if (continueWatching.isNotEmpty()) {
                             item(key = "continue") {
                                 PosterRow("Continue watching", "Hold OK to remove") {
@@ -254,3 +276,38 @@ private fun PosterRow(
 
 /** One row plus the next row's title peeking in, so you can tell there's more below. */
 private val RowsHeight = 290.dp
+
+private const val TILES = 10
+
+/** A category as a wide glass tile: its name on the left, three of its posters fanned on the right. */
+@Composable
+private fun CategoryTile(name: String, covers: List<Poster>, onClick: () -> Unit) {
+    val container = LocalAppContainer.current
+    LumenCard(onClick = onClick, modifier = Modifier.width(260.dp).height(104.dp)) {
+        Box(Modifier.fillMaxSize().background(LumenColors.GlassStrong)) {
+            Text(
+                name,
+                style = MaterialTheme.typography.titleMedium,
+                color = LumenColors.TextPrimary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.align(Alignment.CenterStart).padding(start = 20.dp).width(120.dp),
+            )
+            // Back to front: the last poster sits on top, tilted like a hand of cards.
+            covers.take(3).forEachIndexed { i, poster ->
+                AsyncImage(
+                    model = poster.posterUrl,
+                    contentDescription = null,
+                    imageLoader = container.images,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .offset(x = (-12 - (2 - i) * 34).dp, y = 10.dp)
+                        .size(width = 62.dp, height = 93.dp)
+                        .graphicsLayer { rotationZ = -12f + i * 12f }
+                        .clip(RoundedCornerShape(8.dp)),
+                )
+            }
+        }
+    }
+}

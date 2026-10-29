@@ -1,5 +1,6 @@
 package com.hayat.lumen.ui.guide
 
+import androidx.annotation.OptIn
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -67,6 +68,19 @@ import com.hayat.lumen.ui.components.Monogram
 import com.hayat.lumen.ui.components.formatTime
 import com.hayat.lumen.ui.components.timeRange
 import com.hayat.lumen.ui.theme.LumenColors
+import com.hayat.lumen.ui.components.Ambient
+import com.hayat.lumen.util.ChannelNames
+import com.hayat.lumen.ui.components.ChannelArt
+import com.hayat.lumen.ui.components.LivePreview
+import com.hayat.lumen.ui.components.glass
+import com.hayat.lumen.ui.components.rememberLivePreview
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.ui.compose.ContentFrame
+import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import com.hayat.lumen.ui.theme.LumenMotion
 import com.hayat.lumen.ui.theme.SafeArea
 import kotlinx.coroutines.delay
@@ -77,7 +91,8 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 private val ChannelColumn = 240.dp
-private val RowHeight = 64.dp
+private val RowHeight = 60.dp
+private val PanelHeight = 140.dp
 private val RowGap = 6.dp
 
 /** Horizontal scale: half an hour is 150 dp, so a 1080p TV shows about two hours. */
@@ -126,10 +141,17 @@ fun GuideScreen(onPlay: (channelId: Long, inFavourites: Boolean) -> Unit, onOpen
         label = "window",
     )
 
+    // The focused programme's channel plays muted in the panel after a moment on it (only
+    // while that programme is on now), with the one shared player, like Home's cards.
+    val previewId = focusedChannel?.id?.takeIf { gridFocused && focusedSlot?.programme?.let { now in it.start until it.stop } == true }
+    val preview = rememberLivePreview(previewId, vm::streamUrl)
+
+    // The focused channel's colour glows behind everything, as on Home.
+    var tint by remember { mutableStateOf<Color?>(null) }
+    Ambient(tint = tint) {
     Column(
         Modifier
             .fillMaxSize()
-            .background(LumenColors.Background)
             .padding(horizontal = SafeArea.Horizontal, vertical = SafeArea.Vertical),
     ) {
         Row(
@@ -153,6 +175,8 @@ fun GuideScreen(onPlay: (channelId: Long, inFavourites: Boolean) -> Unit, onOpen
             slot = focusedSlot,
             loading = focusedChannel != null && focusedSlots == null,
             now = now,
+            preview = preview,
+            onTint = { tint = it },
         )
         Spacer(Modifier.height(12.dp))
 
@@ -204,6 +228,7 @@ fun GuideScreen(onPlay: (channelId: Long, inFavourites: Boolean) -> Unit, onOpen
                                 Key.ChannelDown, Key.PageDown -> changeRow(+PAGE)
                                 Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
                                     if (event.nativeKeyEvent.repeatCount == 0) focusedChannel?.let {
+                                        if (preview.channelId == it.id) preview.handOver() // the player picks up its stream
                                         container.lastChannelId.value = it.id
                                         onPlay(it.id, selected?.list == GuideList.Favourites)
                                     }
@@ -247,6 +272,8 @@ fun GuideScreen(onPlay: (channelId: Long, inFavourites: Boolean) -> Unit, onOpen
         }
     }
 
+    }
+
     if (pickerOpen) {
         GroupPicker(
             options = options,
@@ -287,10 +314,22 @@ private suspend fun LazyListState.keepVisible(index: Int) {
     }
 }
 
-/** The focused programme in full, above the grid. Fixed height, so the grid doesn't jump. */
+/**
+ * The focused programme in full, on a glass panel above the grid, with the channel (and, after
+ * a moment on a live programme, the channel itself playing) on the right. Fixed height, so the
+ * grid doesn't jump.
+ */
 @Composable
-private fun Details(channel: GuideChannel?, slot: Slot?, loading: Boolean, now: Long) {
-    Column(Modifier.fillMaxWidth().height(112.dp)) {
+private fun Details(channel: GuideChannel?, slot: Slot?, loading: Boolean, now: Long, preview: LivePreview, onTint: (Color) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(PanelHeight)
+            .glass(RoundedCornerShape(24.dp))
+            .padding(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(20.dp),
+    ) {
+    Column(Modifier.weight(1f).padding(start = 8.dp, top = 2.dp)) {
         if (channel == null) return@Column
         val programme = slot?.programme
         Text(
@@ -314,12 +353,13 @@ private fun Details(channel: GuideChannel?, slot: Slot?, loading: Boolean, now: 
             }
             Text(
                 buildString {
-                    append(channel.name)
+                    append(ChannelNames.display(channel.name).title)
                     if (programme != null) {
                         append("  ·  ")
                         dayName(programme.start, now)?.let { append(it).append(' ') }
                         append(programme.timeRange())
-                        append("  ·  ").append(duration(programme.stop - programme.start))
+                        if (now in programme.start until programme.stop) append("  ·  ").append(duration(programme.stop - now)).append(" left")
+                        else append("  ·  ").append(duration(programme.stop - programme.start))
                     }
                 },
                 style = MaterialTheme.typography.bodyMedium,
@@ -333,10 +373,30 @@ private fun Details(channel: GuideChannel?, slot: Slot?, loading: Boolean, now: 
             Text(
                 it,
                 style = MaterialTheme.typography.bodyMedium,
-                color = LumenColors.TextTertiary,
-                maxLines = 2,
+                color = LumenColors.TextSecondary,
+                maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
+        }
+    }
+        if (channel != null) PreviewTile(channel, preview, onTint, Modifier.fillMaxHeight().aspectRatio(16f / 9f))
+    }
+}
+
+/** The channel's art, with its live picture fading in over it once the preview is playing. */
+@OptIn(UnstableApi::class)
+@Composable
+private fun PreviewTile(channel: GuideChannel, preview: LivePreview, onTint: (Color) -> Unit, modifier: Modifier = Modifier) {
+    val playing = preview.channelId == channel.id
+    val artAlpha by animateFloatAsState(if (playing && preview.showing) 0f else 1f, tween(400), label = "art")
+    Box(modifier.clip(RoundedCornerShape(16.dp))) {
+        val player = preview.player
+        if (playing && player != null) {
+            // TextureView: a SurfaceView ignores the rounded clip.
+            ContentFrame(player = player, modifier = Modifier.fillMaxSize(), surfaceType = SURFACE_TYPE_TEXTURE_VIEW, contentScale = ContentScale.Crop)
+        }
+        if (artAlpha > 0f) {
+            ChannelArt(channel.name, channel.logoUrl, Modifier.fillMaxSize().graphicsLayer { alpha = artAlpha }, onTint = onTint)
         }
     }
 }
@@ -382,16 +442,16 @@ private fun NowLine(gridStart: Long, now: Long, windowMinutes: State<Float>) {
         Box(
             Modifier
                 .offset { IntOffset(((minutes - windowMinutes.value) * pxPerMinute).roundToInt(), 0) }
-                .width(2.dp)
+                .width(1.dp)
                 .fillMaxHeight()
-                .background(LumenColors.Accent.copy(alpha = 0.9f)),
+                .background(LumenColors.TextPrimary.copy(alpha = 0.6f)),
         )
         Box(
             Modifier
                 .offset { IntOffset(((minutes - windowMinutes.value) * pxPerMinute).roundToInt() - 3.dp.roundToPx(), 0) }
-                .size(8.dp)
+                .size(7.dp)
                 .clip(CircleShape)
-                .background(LumenColors.Accent),
+                .background(LumenColors.TextPrimary),
         )
     }
 }
@@ -430,32 +490,14 @@ private fun ChannelCell(channel: GuideChannel, highlighted: Boolean, modifier: M
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Logo(channel, Modifier.size(width = 72.dp, height = 48.dp))
+        ChannelArt(channel.name, channel.logoUrl, Modifier.size(width = 84.dp, height = 52.dp).clip(RoundedCornerShape(12.dp)))
         Text(
-            channel.name,
+            remember(channel.name) { ChannelNames.display(channel.name).title },
             style = MaterialTheme.typography.titleSmall,
             color = if (highlighted) LumenColors.TextPrimary else LumenColors.TextSecondary,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
-    }
-}
-
-/** The channel's logo fitted into a rounded tile, or its monogram while loading or if there's none. */
-@Composable
-private fun Logo(channel: GuideChannel, modifier: Modifier = Modifier) {
-    var loaded by remember(channel.logoUrl) { mutableStateOf(false) }
-    Box(modifier.clip(RoundedCornerShape(10.dp)).background(LumenColors.Surface), contentAlignment = Alignment.Center) {
-        if (!loaded) Monogram(channel.name, size = 40.dp)
-        if (!channel.logoUrl.isNullOrBlank()) {
-            AsyncImage(
-                model = channel.logoUrl,
-                contentDescription = channel.name,
-                contentScale = ContentScale.Fit,
-                onSuccess = { loaded = true },
-                modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 6.dp),
-            )
-        }
     }
 }
 
@@ -471,9 +513,9 @@ private fun ProgrammeCell(slot: Slot, focused: Boolean, gridStart: Long, windowM
     val container by animateColorAsState(
         when {
             focused -> LumenColors.TextPrimary
-            slot.programme == null -> LumenColors.Surface.copy(alpha = 0.45f)
-            live -> LumenColors.SurfaceFocused
-            else -> LumenColors.Surface
+            slot.programme == null -> Color.White.copy(alpha = 0.03f)
+            live -> Color.White.copy(alpha = 0.11f)
+            else -> Color.White.copy(alpha = 0.06f)
         },
         LumenMotion.focus(),
         label = "cell",
@@ -490,8 +532,8 @@ private fun ProgrammeCell(slot: Slot, focused: Boolean, gridStart: Long, windowM
             .offset { IntOffset(((startMinutes - windowMinutes.value) * pxPerMinute).roundToInt(), 0) }
             .width(PerMinute * lengthMinutes)
             .fillMaxHeight()
-            .padding(end = 4.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .padding(end = 6.dp)
+            .clip(RoundedCornerShape(14.dp))
             .background(container),
         contentAlignment = Alignment.CenterStart,
     ) {
@@ -523,7 +565,7 @@ private fun ProgrammeCell(slot: Slot, focused: Boolean, gridStart: Long, windowM
                     .align(Alignment.BottomStart)
                     .fillMaxWidth(((now - slot.start).toFloat() / (slot.stop - slot.start)).coerceIn(0f, 1f))
                     .height(2.dp)
-                    .background(LumenColors.Accent.copy(alpha = 0.6f)),
+                    .background(LumenColors.TextPrimary.copy(alpha = 0.35f)),
             )
         }
     }
@@ -546,7 +588,7 @@ private fun GroupPicker(
             Modifier
                 .width(440.dp)
                 .fillMaxHeight()
-                .background(LumenColors.Surface)
+                .background(LumenColors.Surface.copy(alpha = 0.96f))
                 .padding(horizontal = 24.dp, vertical = SafeArea.Vertical),
         ) {
             Text("Show", style = MaterialTheme.typography.headlineSmall, color = LumenColors.TextPrimary)

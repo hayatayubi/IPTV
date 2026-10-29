@@ -47,6 +47,7 @@ import com.hayat.lumen.ui.components.ChannelLogo
 import com.hayat.lumen.ui.components.QualityTag
 import com.hayat.lumen.ui.components.ProgrammeProgress
 import com.hayat.lumen.ui.components.formatTime
+import com.hayat.lumen.ui.components.ambient
 import com.hayat.lumen.ui.theme.LumenColors
 import com.hayat.lumen.util.ChannelNames
 import com.hayat.lumen.ui.theme.SafeArea
@@ -87,11 +88,11 @@ fun LiveScreen(onPlay: (channelId: Long) -> Unit, onOpenGuide: () -> Unit, onMan
     Row(
         Modifier
             .fillMaxSize()
-            .background(LumenColors.Background)
+            .ambient()
             .padding(horizontal = SafeArea.Horizontal, vertical = SafeArea.Vertical),
     ) {
         // Groups column
-        Column(Modifier.width(340.dp).fillMaxHeight()) {
+        Column(Modifier.width(300.dp).fillMaxHeight()) {
             Text("Live", style = MaterialTheme.typography.headlineLarge, color = LumenColors.TextPrimary)
             Spacer(Modifier.height(16.dp))
             LazyColumn(
@@ -138,15 +139,8 @@ fun LiveScreen(onPlay: (channelId: Long) -> Unit, onOpenGuide: () -> Unit, onMan
 
         // Channels column
         Column(Modifier.weight(1f).fillMaxHeight()) {
+            // The buttons get their own line, so the category's name isn't squeezed next to them.
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    groups.firstOrNull { it.sourceId == selected?.sourceId && it.name == selected?.name }?.label.orEmpty(),
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = LumenColors.TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
                 Text(
                     when (val r = refresh) {
                         is RefreshState.Failed -> r.message
@@ -155,7 +149,9 @@ fun LiveScreen(onPlay: (channelId: Long) -> Unit, onOpenGuide: () -> Unit, onMan
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = LumenColors.TextSecondary,
-                    modifier = Modifier.padding(end = 16.dp),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f).padding(end = 16.dp),
                 )
                 LumenButton(
                     text = "Refresh",
@@ -170,7 +166,16 @@ fun LiveScreen(onPlay: (channelId: Long) -> Unit, onOpenGuide: () -> Unit, onMan
                 Spacer(Modifier.width(12.dp))
                 LumenButton(text = "Categories", onClick = onManageCategories, modifier = Modifier.focusRequester(categoriesFocus))
             }
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(12.dp))
+            Text(
+                groups.firstOrNull { it.sourceId == selected?.sourceId && it.name == selected?.name }?.label.orEmpty(),
+                style = MaterialTheme.typography.headlineSmall,
+                color = LumenColors.TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 16.dp),
+            )
+            Spacer(Modifier.height(8.dp))
             if (everythingHidden) {
                 Text(
                     "All categories are hidden. Open Categories to choose what shows here.",
@@ -246,7 +251,7 @@ private fun ChannelItem(
         Text(
             (channel.number ?: position).toString(),
             style = MaterialTheme.typography.labelLarge,
-            modifier = Modifier.width(48.dp),
+            modifier = Modifier.width(32.dp),
         )
         ChannelLogo(channel.name, channel.logoUrl, size = 40.dp)
         // LocalContentColor flips to dark when the row is focused, so guide text follows it
@@ -285,7 +290,8 @@ private fun ChannelItem(
                 color = dim,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = 260.dp),
+                // Capped so the channel's own name keeps most of the row.
+                modifier = Modifier.widthIn(max = 170.dp),
             )
         }
         if (channel.favourite) {

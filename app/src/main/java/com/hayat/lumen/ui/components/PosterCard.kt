@@ -50,7 +50,7 @@ fun PosterCard(
     val container = LocalAppContainer.current
     var failed by remember(poster.posterUrl) { mutableStateOf(poster.posterUrl == null) }
     LumenCard(onClick = onClick, onLongClick = onLongClick, modifier = modifier.width(width).aspectRatio(2f / 3f)) {
-        Box(Modifier.fillMaxSize().background(LumenColors.Surface)) {
+        Box(Modifier.fillMaxSize().background(LumenColors.GlassStrong)) {
             if (failed) {
                 val name = remember(poster.name) { VodNames.display(poster.name) }
                 Text(
@@ -99,7 +99,7 @@ fun PosterCard(
 @Composable
 fun SeeAllCard(count: Int, onClick: () -> Unit, modifier: Modifier = Modifier, width: Dp = PosterWidth) {
     LumenCard(onClick = onClick, modifier = modifier.width(width).aspectRatio(2f / 3f)) {
-        Column(Modifier.fillMaxSize().background(LumenColors.Surface), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.fillMaxSize().background(LumenColors.GlassStrong), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
             Text("See all", style = MaterialTheme.typography.titleMedium, color = LumenColors.TextPrimary)
             Text(formatCount(count), style = MaterialTheme.typography.bodyMedium, color = LumenColors.TextSecondary)
         }

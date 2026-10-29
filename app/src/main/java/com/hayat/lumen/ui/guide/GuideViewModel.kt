@@ -38,6 +38,8 @@ class GuideViewModel(private val repo: LiveRepository, private val epg: EpgRepos
     val gridStart: Long = GuideSlots.floorHalfHour(System.currentTimeMillis()) - GuideSlots.HALF_HOUR
     val gridEnd: Long = gridStart + 25 * 60 * 60_000L
 
+    suspend fun streamUrl(channelId: Long): String? = repo.channel(channelId)?.streamUrl
+
     private val favourites = repo.favourites
     private val groups = repo.groups
 

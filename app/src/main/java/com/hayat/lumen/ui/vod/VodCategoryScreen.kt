@@ -40,6 +40,7 @@ import com.hayat.lumen.data.db.VodCategoryRow
 import com.hayat.lumen.ui.components.LumenButton
 import com.hayat.lumen.ui.components.PosterCard
 import com.hayat.lumen.ui.components.formatCount
+import com.hayat.lumen.ui.components.ambient
 import com.hayat.lumen.ui.theme.LumenColors
 import com.hayat.lumen.ui.theme.SafeArea
 
@@ -57,7 +58,7 @@ fun VodCategoryScreen(row: VodCategoryRow, onOpen: (Poster) -> Unit, onHidden: (
     Column(
         Modifier
             .fillMaxSize()
-            .background(LumenColors.Background)
+            .ambient()
             .padding(horizontal = SafeArea.Horizontal, vertical = SafeArea.Vertical),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

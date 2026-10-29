@@ -34,6 +34,9 @@ import com.hayat.lumen.data.db.VodKind
 import com.hayat.lumen.data.db.WatchProgressEntity
 import com.hayat.lumen.data.vod.VodRepository
 import com.hayat.lumen.ui.components.LumenButton
+import com.hayat.lumen.ui.components.Ambient
+import com.hayat.lumen.data.ratings.OmdbClient
+import com.hayat.lumen.R
 import com.hayat.lumen.ui.components.ProgrammeProgress
 import com.hayat.lumen.ui.theme.LumenColors
 import com.hayat.lumen.ui.theme.SafeArea
@@ -43,7 +46,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-class MovieDetailViewModel(private val vod: VodRepository, private val sourceId: Long, private val streamId: String) : ViewModel() {
+class MovieDetailViewModel(
+    private val vod: VodRepository,
+    private val omdb: OmdbClient,
+    private val omdbKey: () -> String?,
+    private val sourceId: Long,
+    private val streamId: String,
+) : ViewModel() {
     private val _hero = MutableStateFlow<HeroInfo?>(null)
     val hero: StateFlow<HeroInfo?> = _hero
 
@@ -57,7 +66,9 @@ class MovieDetailViewModel(private val vod: VodRepository, private val sourceId:
             val movie = vod.movie(sourceId, streamId) ?: return@launch
             val poster = Poster(sourceId, VodKind.MOVIE, streamId, movie.name, movie.posterUrl, movie.rating)
             _hero.value = poster.quickHero()
-            _hero.value = vod.hero(poster)
+            val full = vod.hero(poster)
+            _hero.value = full
+            _hero.value = omdb.addRatings(full, omdbKey(), series = false)
         }
     }
 
@@ -73,15 +84,16 @@ class MovieDetailViewModel(private val vod: VodRepository, private val sourceId:
 @Composable
 fun MovieDetailScreen(sourceId: Long, streamId: String, onPlay: (startOver: Boolean) -> Unit) {
     val container = LocalAppContainer.current
-    val vm = viewModel { MovieDetailViewModel(container.vod, sourceId, streamId) }
+    val vm = viewModel { MovieDetailViewModel(container.vod, container.omdb, { container.prefs.omdbKey.value }, sourceId, streamId) }
     val hero by vm.hero.collectAsStateWithLifecycle()
     val progress by vm.progress.collectAsStateWithLifecycle()
     val inMyList by vm.inMyList.collectAsStateWithLifecycle()
     val playFocus = remember { FocusRequester() }
     val resumeAt = VodRepository.resumePosition(progress)
 
-    Box(Modifier.fillMaxSize().background(LumenColors.Background)) {
-        Backdrop(hero, widthFraction = 0.85f, heightFraction = 1f)
+    // Apple TV style: the backdrop fills the screen, darkening to the left and bottom for the text.
+    Ambient {
+        Backdrop(hero, widthFraction = 1f, heightFraction = 1f, leftFade = 0.6f)
         Column(
             Modifier
                 .fillMaxSize()
@@ -89,7 +101,7 @@ fun MovieDetailScreen(sourceId: Long, streamId: String, onPlay: (startOver: Bool
                 .padding(top = 40.dp),
             verticalArrangement = Arrangement.Bottom,
         ) {
-            HeroText(hero, Modifier.fillMaxWidth(), plotLines = 5)
+            HeroText(hero, Modifier.fillMaxWidth(), plotLines = 4, titleStyle = MaterialTheme.typography.displayMedium)
             hero?.let { h ->
                 val credits = listOfNotNull(h.cast?.let { "Starring  $it" }, h.director?.let { "Director  $it" })
                 credits.forEach {
@@ -109,10 +121,17 @@ fun MovieDetailScreen(sourceId: Long, streamId: String, onPlay: (startOver: Bool
                 LumenButton(
                     text = if (resumeAt != null) "Resume from ${formatPosition(resumeAt)}" else "Play",
                     onClick = { onPlay(false) },
+                    primary = true,
+                    icon = R.drawable.ic_play,
                     modifier = Modifier.focusRequester(playFocus),
                 )
                 if (resumeAt != null) LumenButton(text = "Start over", onClick = { onPlay(true) })
-                LumenButton(text = if (inMyList) "✓  In My List" else "+  My List", onClick = vm::toggleMyList)
+                // The heart is My List, as in Chillio. Filled when it's in.
+                LumenButton(
+                    text = "",
+                    onClick = vm::toggleMyList,
+                    icon = if (inMyList) R.drawable.ic_heart else R.drawable.ic_heart_outline,
+                )
             }
             val p = progress
             if (resumeAt != null && p != null && p.durationMs > 0) {

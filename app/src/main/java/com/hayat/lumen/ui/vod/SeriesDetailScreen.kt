@@ -50,6 +50,9 @@ import com.hayat.lumen.data.vod.VodRepository
 import com.hayat.lumen.data.xtream.XtreamEpisode
 import com.hayat.lumen.data.xtream.XtreamSeriesInfo
 import com.hayat.lumen.ui.components.LumenButton
+import com.hayat.lumen.ui.components.Ambient
+import com.hayat.lumen.data.ratings.OmdbClient
+import com.hayat.lumen.R
 import com.hayat.lumen.ui.components.LumenCard
 import com.hayat.lumen.ui.components.Pills
 import com.hayat.lumen.ui.components.ProgrammeProgress
@@ -69,7 +72,13 @@ sealed interface EpisodesState {
     data class Failed(val message: String) : EpisodesState
 }
 
-class SeriesDetailViewModel(private val vod: VodRepository, private val sourceId: Long, private val seriesId: String) : ViewModel() {
+class SeriesDetailViewModel(
+    private val vod: VodRepository,
+    private val omdb: OmdbClient,
+    private val omdbKey: () -> String?,
+    private val sourceId: Long,
+    private val seriesId: String,
+) : ViewModel() {
     private val _hero = MutableStateFlow<HeroInfo?>(null)
     val hero: StateFlow<HeroInfo?> = _hero
     private val _episodes = MutableStateFlow<EpisodesState>(EpisodesState.Loading)
@@ -83,7 +92,9 @@ class SeriesDetailViewModel(private val vod: VodRepository, private val sourceId
     init {
         viewModelScope.launch {
             val series = vod.series(sourceId, seriesId) ?: return@launch
-            _hero.value = vod.hero(Poster(sourceId, VodKind.SERIES, seriesId, series.name, series.posterUrl, series.rating))
+            val full = vod.hero(Poster(sourceId, VodKind.SERIES, seriesId, series.name, series.posterUrl, series.rating))
+            _hero.value = full
+            _hero.value = omdb.addRatings(full, omdbKey(), series = true)
         }
         load()
     }
@@ -116,7 +127,7 @@ class SeriesDetailViewModel(private val vod: VodRepository, private val sourceId
 @Composable
 fun SeriesDetailScreen(sourceId: Long, seriesId: String, onPlay: (episodeId: String) -> Unit) {
     val container = LocalAppContainer.current
-    val vm = viewModel { SeriesDetailViewModel(container.vod, sourceId, seriesId) }
+    val vm = viewModel { SeriesDetailViewModel(container.vod, container.omdb, { container.prefs.omdbKey.value }, sourceId, seriesId) }
     val hero by vm.hero.collectAsStateWithLifecycle()
     val state by vm.episodes.collectAsStateWithLifecycle()
     val progress by vm.progress.collectAsStateWithLifecycle()
@@ -130,8 +141,8 @@ fun SeriesDetailScreen(sourceId: Long, seriesId: String, onPlay: (episodeId: Str
     LaunchedEffect(pick?.episode?.season) { if (season == null) season = pick?.episode?.season }
     val shown = season ?: seasons.firstOrNull()
 
-    Box(Modifier.fillMaxSize().background(LumenColors.Background)) {
-        Backdrop(hero, widthFraction = 0.85f, heightFraction = 0.8f)
+    Ambient {
+        Backdrop(hero, widthFraction = 1f, heightFraction = 1f, leftFade = 0.6f)
         Column(
             Modifier.fillMaxSize().padding(horizontal = SafeArea.Horizontal, vertical = SafeArea.Vertical),
             verticalArrangement = Arrangement.Bottom,
@@ -147,9 +158,15 @@ fun SeriesDetailScreen(sourceId: Long, seriesId: String, onPlay: (episodeId: Str
                     },
                     onClick = { pick?.let { onPlay(it.episode.id) } },
                     enabled = pick != null,
+                    primary = true,
+                    icon = R.drawable.ic_play,
                     modifier = Modifier.focusRequester(playFocus),
                 )
-                LumenButton(text = if (inMyList) "✓  In My List" else "+  My List", onClick = vm::toggleMyList)
+                LumenButton(
+                    text = "",
+                    onClick = vm::toggleMyList,
+                    icon = if (inMyList) R.drawable.ic_heart else R.drawable.ic_heart_outline,
+                )
                 (state as? EpisodesState.Failed)?.let { failed ->
                     Text(failed.message, style = MaterialTheme.typography.bodyMedium, color = LumenColors.TextSecondary)
                     LumenButton(text = "Try again", onClick = vm::load)
@@ -202,7 +219,7 @@ private fun EpisodeCard(episode: XtreamEpisode, progress: WatchProgressEntity?, 
     val container = LocalAppContainer.current
     Column(Modifier.width(EpisodeWidth)) {
         LumenCard(onClick = onClick, modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
-            Box(Modifier.fillMaxSize().background(LumenColors.Surface)) {
+            Box(Modifier.fillMaxSize().background(LumenColors.Glass)) {
                 val image = episode.imageUrl ?: fallbackImage
                 if (image != null) {
                     AsyncImage(

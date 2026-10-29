@@ -41,6 +41,7 @@ import com.hayat.lumen.ui.components.LumenButton
 import com.hayat.lumen.ui.components.LumenListItem
 import com.hayat.lumen.ui.components.LumenTextField
 import com.hayat.lumen.ui.guide.GuideSettingsSection
+import com.hayat.lumen.ui.components.ambient
 import com.hayat.lumen.ui.theme.LumenColors
 import com.hayat.lumen.ui.theme.SafeArea
 import kotlinx.coroutines.launch
@@ -76,7 +77,7 @@ fun SettingsScreen(
     Row(
         Modifier
             .fillMaxSize()
-            .background(LumenColors.Background)
+            .ambient()
             .padding(horizontal = SafeArea.Horizontal, vertical = SafeArea.Vertical),
     ) {
         Column(Modifier.width(280.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp)) {

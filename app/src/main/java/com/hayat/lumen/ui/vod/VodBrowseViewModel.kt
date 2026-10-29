@@ -50,6 +50,9 @@ class VodBrowseViewModel(private val vod: VodRepository, val kind: VodKind) : Vi
 
     suspend fun posters(row: VodCategoryRow): List<Poster> = vod.postersIn(row, ROW_LIMIT)
 
+    /** Three posters for a category's tile. */
+    suspend fun covers(row: VodCategoryRow): List<Poster> = vod.postersIn(row, 3)
+
     fun toggleMyList(poster: Poster, onDone: (Boolean) -> Unit) {
         viewModelScope.launch { onDone(vod.toggleMyList(poster.sourceId, poster.kind, poster.itemId)) }
     }

@@ -92,7 +92,9 @@ fun LumenRoot(onExit: () -> Unit) {
 
     // Tabs swap the screen above Home rather than stacking up, like a tab bar.
     val onTab: (Tab) -> Unit = { tab ->
-        if (tab == Tab.SETTINGS) {
+        if (tab == Tab.SEARCH) {
+            backStack.add(VodSearchRoute)
+        } else if (tab == Tab.SETTINGS) {
             // Opens on Updates while one is waiting: that's what the blue dot points at.
             val section = if (container.updates.available.value != null) SettingsSection.UPDATES else SettingsSection.PLAYLISTS
             backStack.add(SettingsRoute(section))
