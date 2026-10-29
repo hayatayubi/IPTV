@@ -63,6 +63,10 @@ import androidx.media3.ui.compose.ContentFrame
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.hayat.lumen.LocalAppContainer
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.res.painterResource
+import androidx.tv.material3.Icon
+import com.hayat.lumen.R
 import com.hayat.lumen.data.db.VodKind
 import com.hayat.lumen.playback.PlayerHolder
 import com.hayat.lumen.ui.components.LumenListItem
@@ -73,7 +77,7 @@ import com.hayat.lumen.ui.theme.SafeArea
 import kotlinx.coroutines.delay
 import java.util.Locale
 
-private enum class VodStatus { LOADING, READY, ENDED, FAILED }
+internal enum class VodStatus { LOADING, READY, ENDED, FAILED }
 
 /**
  * Full-screen film/episode player.
@@ -102,6 +106,7 @@ fun VodPlayerScreen(sourceId: Long, kind: VodKind, itemId: String, seriesId: Str
     var seekFrom by remember { mutableLongStateOf(0L) }
     val seekRamp = remember { SeekRamp() }
     var panel by remember { mutableStateOf(false) }
+    var buttonFocused by remember { mutableStateOf(false) }
     var tracks by remember { mutableStateOf(Tracks.EMPTY) }
     var cues by remember { mutableStateOf<List<Cue>>(emptyList()) }
     var countdown by remember { mutableStateOf<Int?>(null) }
@@ -201,6 +206,8 @@ fun VodPlayerScreen(sourceId: Long, kind: VodKind, itemId: String, seriesId: Str
         seekTarget = null
     }
 
+    LaunchedEffect(controls) { if (!controls) buttonFocused = false }
+
     LaunchedEffect(controls, interaction, playing, panel) {
         if (controls && playing && !panel) {
             delay(CONTROLS_TIMEOUT_MS)
@@ -269,17 +276,37 @@ fun VodPlayerScreen(sourceId: Long, kind: VodKind, itemId: String, seriesId: Str
                 if (panel || event.type != KeyEventType.KeyDown) return@onKeyEvent false
                 val repeat = event.nativeKeyEvent.repeatCount
                 when (event.key) {
-                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause -> {
+                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                        if (repeat == 0) {
+                            if (buttonFocused && controls) {
+                                buttonFocused = false
+                                panel = true
+                            } else {
+                                togglePlay()
+                            }
+                        }
+                        true
+                    }
+                    Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause -> {
                         if (repeat == 0) togglePlay()
                         true
                     }
-                    Key.DirectionLeft, Key.MediaRewind -> { seekBy(-1, repeat, event.nativeKeyEvent.eventTime); true }
-                    Key.DirectionRight, Key.MediaFastForward -> { seekBy(+1, repeat, event.nativeKeyEvent.eventTime); true }
+                    Key.DirectionLeft, Key.MediaRewind -> { buttonFocused = false; seekBy(-1, repeat, event.nativeKeyEvent.eventTime); true }
+                    Key.DirectionRight, Key.MediaFastForward -> { buttonFocused = false; seekBy(+1, repeat, event.nativeKeyEvent.eventTime); true }
                     Key.DirectionUp -> {
-                        if (hasChoices) panel = true else showControls()
+                        when {
+                            buttonFocused -> { buttonFocused = false; showControls() }
+                            hasChoices -> panel = true // still a shortcut
+                            else -> showControls()
+                        }
                         true
                     }
-                    Key.DirectionDown -> { showControls(); true }
+                    Key.DirectionDown -> {
+                        // With the controls up, Down highlights the Audio & Subtitles button.
+                        if (controls && hasChoices) buttonFocused = true
+                        showControls()
+                        true
+                    }
                     else -> false
                 }
             }
@@ -311,7 +338,7 @@ fun VodPlayerScreen(sourceId: Long, kind: VodKind, itemId: String, seriesId: Str
                 duration = duration,
                 seeking = seekTarget != null,
                 seekDelta = seekTarget?.let { it - seekFrom },
-                hint = if (hasChoices) "Press Up for audio and subtitles" else null,
+                tracksButton = if (hasChoices) buttonFocused else null,
             )
         }
 
@@ -355,7 +382,7 @@ fun VodPlayerScreen(sourceId: Long, kind: VodKind, itemId: String, seriesId: Str
 }
 
 @Composable
-private fun Controls(
+internal fun Controls(
     title: String,
     subtitle: String?,
     status: VodStatus,
@@ -365,7 +392,8 @@ private fun Controls(
     duration: Long,
     seeking: Boolean,
     seekDelta: Long?,
-    hint: String?,
+    /** Null: no audio or subtitle choices, so no button. Else whether the button has the highlight. */
+    tracksButton: Boolean?,
 ) {
     Column(
         Modifier
@@ -409,13 +437,36 @@ private fun Controls(
                         style = MaterialTheme.typography.titleLarge,
                         color = LumenColors.TextPrimary,
                     )
-                } else {
-                    hint?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = LumenColors.TextTertiary) }
                 }
                 Spacer(Modifier.weight(1f))
                 Text("-${formatPosition((duration - position).coerceAtLeast(0))}", style = MaterialTheme.typography.bodyMedium, color = LumenColors.TextSecondary)
             }
         }
+        if (tracksButton != null) {
+            Spacer(Modifier.height(14.dp))
+            TracksButton(highlighted = tracksButton)
+        }
+    }
+}
+
+/**
+ * The Audio and Subtitles button under the progress bar, as in the Apple TV app. Down moves the
+ * highlight onto it and OK opens the panel. It isn't a real focusable: the player's key handler owns
+ * the D-pad (Left/Right must keep seeking), so it only draws the highlight it's told to.
+ */
+@Composable
+private fun TracksButton(highlighted: Boolean) {
+    val bg = if (highlighted) LumenColors.TextPrimary else LumenColors.GlassStrong
+    val fg = if (highlighted) LumenColors.Background else LumenColors.TextPrimary
+    Row(
+        Modifier
+            .background(bg, RoundedCornerShape(50))
+            .padding(horizontal = 18.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(painterResource(R.drawable.ic_subtitles), contentDescription = null, tint = fg, modifier = Modifier.size(22.dp))
+        Text("Audio & Subtitles", style = MaterialTheme.typography.titleSmall, color = fg)
     }
 }
 
@@ -435,10 +486,13 @@ private fun UpNext(label: String, seconds: Int, modifier: Modifier = Modifier) {
     }
 }
 
-/** Audio and subtitle choices, in a panel on the right like tvOS's info panel. */
+/**
+ * Audio and subtitle choices, in a panel on the right like tvOS's info panel. Long lists show the
+ * chosen track and the TV's language and English first, with the rest behind "More languages".
+ */
 @OptIn(UnstableApi::class)
 @Composable
-private fun TracksPanel(
+internal fun TracksPanel(
     audio: List<Tracks.Group>,
     text: List<Tracks.Group>,
     onSelect: (Tracks.Group, Int) -> Unit,
@@ -446,6 +500,29 @@ private fun TracksPanel(
     subtitlesOff: Boolean,
 ) {
     val first = remember { FocusRequester() }
+    var audioOpen by remember { mutableStateOf(false) }
+    var textOpen by remember { mutableStateOf(false) }
+    val preferred = remember { listOfNotNull(iso3(Locale.getDefault().language), "eng").distinct() }
+
+    val audioChoices = audio.flatMap { g -> (0 until g.length).map { g to it } }
+    val textChoices = text.flatMap { g -> (0 until g.length).map { g to it } }
+    val audioCommon = remember(audioChoices) {
+        TrackPicks.common(
+            audioChoices.map { (g, i) -> iso3(g.getTrackFormat(i).language) },
+            audioChoices.indices.filter { audioChoices[it].let { (g, i) -> g.isTrackSelected(i) } }.toSet(),
+            preferred,
+        )
+    }
+    val textCommon = remember(textChoices, subtitlesOff) {
+        TrackPicks.common(
+            textChoices.map { (g, i) -> iso3(g.getTrackFormat(i).language) },
+            if (subtitlesOff) emptySet() else textChoices.indices.filter { textChoices[it].let { (g, i) -> g.isTrackSelected(i) } }.toSet(),
+            preferred,
+        )
+    }
+    val audioShown = if (audioOpen || audioCommon == null) audioChoices.indices.toList() else audioCommon
+    val textShown = if (textOpen || textCommon == null) textChoices.indices.toList() else textCommon
+
     LazyColumn(
         Modifier
             .fillMaxHeight()
@@ -454,22 +531,27 @@ private fun TracksPanel(
             .padding(horizontal = 16.dp, vertical = SafeArea.Vertical),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        val audioChoices = audio.flatMap { g -> (0 until g.length).map { g to it } }
         if (audioChoices.isNotEmpty()) {
             item { PanelHeader("Audio") }
-            items(audioChoices) { (group, i) ->
+            items(audioShown, key = { "a$it" }) { index ->
+                val (group, i) = audioChoices[index]
                 val format = group.getTrackFormat(i)
                 TrackRow(
                     label = audioLabel(format.language, format.label, format.channelCount),
                     selected = group.isTrackSelected(i),
                     supported = group.isTrackSupported(i),
                     onClick = { onSelect(group, i) },
-                    modifier = if (group == audioChoices.first().first && i == audioChoices.first().second) Modifier.focusRequester(first) else Modifier,
+                    modifier = if (index == audioShown.first()) Modifier.focusRequester(first) else Modifier,
                 )
+            }
+            if (audioCommon != null) {
+                item(key = "audioMore") {
+                    MoreRow(open = audioOpen, hidden = audioChoices.size - audioCommon.size, onClick = { audioOpen = !audioOpen })
+                }
             }
         }
         item { PanelHeader("Subtitles") }
-        item {
+        item(key = "off") {
             TrackRow(
                 label = "Off",
                 selected = subtitlesOff,
@@ -478,7 +560,8 @@ private fun TracksPanel(
                 modifier = if (audioChoices.isEmpty()) Modifier.focusRequester(first) else Modifier,
             )
         }
-        items(text.flatMap { g -> (0 until g.length).map { g to it } }) { (group, i) ->
+        items(textShown, key = { "t$it" }) { index ->
+            val (group, i) = textChoices[index]
             val format = group.getTrackFormat(i)
             TrackRow(
                 label = languageName(format.language, format.label),
@@ -487,9 +570,31 @@ private fun TracksPanel(
                 onClick = { onSelect(group, i) },
             )
         }
+        if (textCommon != null) {
+            item(key = "textMore") {
+                MoreRow(open = textOpen, hidden = textChoices.size - textCommon.size, onClick = { textOpen = !textOpen })
+            }
+        }
     }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
 }
+
+/** The row that opens (or closes) the rest of a long track list. */
+@Composable
+private fun MoreRow(open: Boolean, hidden: Int, onClick: () -> Unit) {
+    LumenListItem(onClick = onClick, minHeight = 44.dp) {
+        Text(if (open) "▴" else "▾", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.width(18.dp))
+        Text(
+            if (open) "Fewer languages" else "More languages ($hidden)",
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+/** "en" and "eng" both → "eng", so tracks and the TV's language compare. */
+private fun iso3(language: String?): String? =
+    language?.takeIf { it.isNotBlank() && it != "und" }?.let { runCatching { Locale.forLanguageTag(it).isO3Language }.getOrNull() ?: it }
 
 @Composable
 private fun PanelHeader(text: String) {
