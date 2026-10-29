@@ -20,6 +20,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.focusGroup
+import androidx.compose.runtime.remember
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
@@ -55,11 +60,16 @@ fun TopTabs(
     leading: @Composable BoxScope.() -> Unit = {},
 ) {
     val update by LocalAppContainer.current.updates.available.collectAsStateWithLifecycle()
+    val selectedFocus = remember { FocusRequester() }
     Box(modifier.fillMaxWidth()) {
         Box(Modifier.align(Alignment.CenterStart).fillMaxWidth(0.25f), content = leading)
         Row(
             Modifier
                 .align(Alignment.Center)
+                // Up from the screen lands on the open tab, not on whatever item is nearest (the search icon).
+                // SwiftUI's focus engine picks a "preferred" item for you; Compose needs it spelled out like this.
+                .focusProperties { onEnter = { selectedFocus.requestFocus() } }
+                .focusGroup()
                 .glass(RoundedCornerShape(50))
                 .padding(6.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -70,6 +80,7 @@ fun TopTabs(
                     selected = tab == selected,
                     onClick = { if (tab != selected) onSelect(tab) },
                     padding = if (tab.icon != null) PaddingValues(10.dp) else PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+                    modifier = if (tab == selected) Modifier.focusRequester(selectedFocus) else Modifier,
                 ) {
                     val icon = tab.icon
                     if (icon == null) {
@@ -103,9 +114,16 @@ private val Tab.icon: Int?
     }
 
 @Composable
-private fun BarItem(selected: Boolean, onClick: () -> Unit, padding: PaddingValues, content: @Composable () -> Unit) {
+private fun BarItem(
+    selected: Boolean,
+    onClick: () -> Unit,
+    padding: PaddingValues,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
     Surface(
         onClick = onClick,
+        modifier = modifier,
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (selected) LumenColors.GlassStrong else Color.Transparent,

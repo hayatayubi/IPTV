@@ -48,10 +48,11 @@ class VodBrowseViewModel(private val vod: VodRepository, val kind: VodKind) : Vi
         focused.value = poster
     }
 
-    suspend fun posters(row: VodCategoryRow): List<Poster> = vod.postersIn(row, ROW_LIMIT)
-
-    /** Three posters for a category's tile. */
-    suspend fun covers(row: VodCategoryRow): List<Poster> = vod.postersIn(row, 3)
+    /** A row's posters. The top row's first one fills the hero until something has focus. */
+    suspend fun posters(row: VodCategoryRow, fillsHero: Boolean = false): List<Poster> =
+        vod.postersIn(row, ROW_LIMIT).also { posters ->
+            if (fillsHero && focused.value == null) posters.firstOrNull()?.let(::focus)
+        }
 
     fun toggleMyList(poster: Poster, onDone: (Boolean) -> Unit) {
         viewModelScope.launch { onDone(vod.toggleMyList(poster.sourceId, poster.kind, poster.itemId)) }

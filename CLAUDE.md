@@ -172,7 +172,9 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
   screens. `LumenButton(primary = true)` = white Play pill; `icon =` vector icons in `res/drawable/ic_*.xml` (Material
   Icons, Apache 2.0). Home: hero, then "Favourites" + hint + All channels / TV guide, then the grid. Guide: glass
   details panel with the focused live channel previewing muted on the right (`ui/components/LivePreview.kt`, shared with
-  Home). VOD: full-screen backdrops, category tiles (3 fanned posters) at the top of each tab, heart = My List.
+  Home). VOD: full-screen backdrops, heart = My List. Category names are tidied for display by
+  `util/CategoryNames` (NFKC first: providers write tags in superscript letters like ᴰᴼᴸᴮʸ). The fanned-poster category
+  tiles were dropped (0.6.2: names cut off, posters over the text). Up into `TopTabs` always lands on the open tab.
 - **Ratings**: `data/ratings/OmdbClient.ratings(key, title, year, series)` (OMDb `t=`/`y=`/`type=`), in-memory LRU, null
   without the user's key. Shown big, as in Chillio, by `RatingsPanel` (drawn tomato/splat + "Tomatometer", IMDb box + votes, age box): its own
   "Ratings" row under the film page's buttons, at the right of the series page's buttons; the provider's

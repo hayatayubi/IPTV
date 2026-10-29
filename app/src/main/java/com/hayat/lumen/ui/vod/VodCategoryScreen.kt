@@ -42,6 +42,7 @@ import com.hayat.lumen.ui.components.PosterCard
 import com.hayat.lumen.ui.components.formatCount
 import com.hayat.lumen.ui.components.ambient
 import com.hayat.lumen.ui.theme.LumenColors
+import com.hayat.lumen.util.CategoryNames
 import com.hayat.lumen.ui.theme.SafeArea
 
 /** "See all": every poster in one category, in a grid. Also where a category can be hidden. */
@@ -63,7 +64,7 @@ fun VodCategoryScreen(row: VodCategoryRow, onOpen: (Poster) -> Unit, onHidden: (
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                row.name,
+                remember(row.name) { CategoryNames.title(row.name) },
                 style = MaterialTheme.typography.headlineMedium,
                 color = LumenColors.TextPrimary,
                 maxLines = 1,
