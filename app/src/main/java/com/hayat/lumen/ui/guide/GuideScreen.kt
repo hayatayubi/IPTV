@@ -65,6 +65,8 @@ import com.hayat.lumen.LocalAppContainer
 import com.hayat.lumen.ui.components.LumenButton
 import com.hayat.lumen.ui.components.LumenListItem
 import com.hayat.lumen.ui.components.Monogram
+import com.hayat.lumen.ui.components.dayName
+import com.hayat.lumen.ui.components.formatDuration
 import com.hayat.lumen.ui.components.formatTime
 import com.hayat.lumen.ui.components.timeRange
 import com.hayat.lumen.ui.theme.LumenColors
@@ -84,10 +86,6 @@ import androidx.compose.animation.core.tween
 import com.hayat.lumen.ui.theme.LumenMotion
 import com.hayat.lumen.ui.theme.SafeArea
 import kotlinx.coroutines.delay
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.TextStyle
-import java.util.Locale
 import kotlin.math.roundToInt
 
 private val ChannelColumn = 240.dp
@@ -358,8 +356,8 @@ private fun Details(channel: GuideChannel?, slot: Slot?, loading: Boolean, now: 
                         append("  ·  ")
                         dayName(programme.start, now)?.let { append(it).append(' ') }
                         append(programme.timeRange())
-                        if (now in programme.start until programme.stop) append("  ·  ").append(duration(programme.stop - now)).append(" left")
-                        else append("  ·  ").append(duration(programme.stop - programme.start))
+                        if (now in programme.start until programme.stop) append("  ·  ").append(formatDuration(programme.stop - now)).append(" left")
+                        else append("  ·  ").append(formatDuration(programme.stop - programme.start))
                     }
                 },
                 style = MaterialTheme.typography.bodyMedium,
@@ -618,30 +616,5 @@ private fun Message(title: String, body: String) {
         Text(title, style = MaterialTheme.typography.headlineSmall, color = LumenColors.TextPrimary)
         Spacer(Modifier.height(8.dp))
         Text(body, style = MaterialTheme.typography.bodyLarge, color = LumenColors.TextSecondary)
-    }
-}
-
-/** "Tomorrow", "Thursday"…, or null for today. */
-private fun dayName(time: Long, now: Long): String? {
-    val zone = ZoneId.systemDefault()
-    val day = Instant.ofEpochMilli(time).atZone(zone).toLocalDate()
-    val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
-    return when (day) {
-        today -> null
-        today.plusDays(1) -> "Tomorrow"
-        today.minusDays(1) -> "Yesterday"
-        else -> day.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault())
-    }
-}
-
-/** "45 min", "2 h", "1 h 30 min". */
-private fun duration(millis: Long): String {
-    val minutes = (millis / MINUTE).toInt()
-    val h = minutes / 60
-    val m = minutes % 60
-    return when {
-        h == 0 -> "$m min"
-        m == 0 -> "$h h"
-        else -> "$h h $m min"
     }
 }

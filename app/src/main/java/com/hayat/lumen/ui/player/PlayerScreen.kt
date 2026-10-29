@@ -5,6 +5,7 @@ import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -21,6 +22,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -69,6 +71,8 @@ private enum class Status { LOADING, PLAYING, FAILED }
 /**
  * Full-screen live player.
  * Up/Down: previous/next channel in the group (or in favourites, when opened from Home) · OK: info overlay · Back: hide overlay, then leave.
+ * Right opens the guide strip: Left/Right = programmes, Up/Down = other channels' guides (the stream
+ * stays), OK = watch that channel, Back = close.
  */
 @OptIn(UnstableApi::class)
 @Composable
@@ -77,6 +81,8 @@ fun PlayerScreen(channelId: Long, inFavourites: Boolean) {
     val vm = viewModel { PlayerViewModel(container.live, container.epg, container.lastChannelId, channelId, inFavourites) }
     val tuned by vm.tuned.collectAsStateWithLifecycle()
     val nowNext by vm.nowNext.collectAsStateWithLifecycle()
+    val browsed by vm.browsed.collectAsStateWithLifecycle()
+    val schedule by vm.schedule.collectAsStateWithLifecycle()
 
     var player by remember { mutableStateOf<ExoPlayer?>(null) }
     var status by remember { mutableStateOf(Status.LOADING) }
@@ -85,9 +91,23 @@ fun PlayerScreen(channelId: Long, inFavourites: Boolean) {
     var retry by remember { mutableIntStateOf(0) }
     val keys = remember { FocusRequester() }
 
+    // The guide strip's selection, and the time it points at: moving to another channel's guide
+    // selects what's on there at that time (like Up/Down in the guide grid).
+    val guideOpen = browsed != null
+    var selected by remember { mutableIntStateOf(0) }
+    var anchor by remember { mutableLongStateOf(0L) }
+    var guideInteraction by remember { mutableIntStateOf(0) }
+
     fun showOverlay() {
         overlay = true
         interaction++
+    }
+
+    fun select(index: Int) {
+        val programmes = schedule ?: return
+        val programme = programmes.getOrNull(index) ?: return
+        selected = index
+        anchor = maxOf(programme.start, System.currentTimeMillis())
     }
 
     // Acquire the shared player while this screen is visible; stop it when it isn't.
@@ -156,6 +176,18 @@ fun PlayerScreen(channelId: Long, inFavourites: Boolean) {
         }
     }
 
+    LaunchedEffect(schedule) {
+        schedule?.let { selected = GuidePick.index(it, maxOf(anchor, System.currentTimeMillis())).coerceAtLeast(0) }
+    }
+
+    // The strip closes by itself after a while without keys, like the info overlay.
+    LaunchedEffect(guideOpen, guideInteraction) {
+        if (guideOpen) {
+            delay(GUIDE_TIMEOUT_MS)
+            vm.closeGuide()
+        }
+    }
+
     // TVs dim to a screensaver after inactivity; not while watching.
     val view = LocalView.current
     DisposableEffect(Unit) {
@@ -165,6 +197,8 @@ fun PlayerScreen(channelId: Long, inFavourites: Boolean) {
 
     // Back hides the overlay first; with it hidden, Back falls through to navigation.
     BackHandler(enabled = overlay) { overlay = false }
+    // Declared later, so it wins while both are enabled (Compose asks the newest BackHandler first).
+    BackHandler(enabled = guideOpen) { vm.closeGuide() }
 
     Box(
         Modifier
@@ -173,7 +207,32 @@ fun PlayerScreen(channelId: Long, inFavourites: Boolean) {
             .focusRequester(keys)
             .onKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+                if (guideOpen) {
+                    guideInteraction++
+                    return@onKeyEvent when (event.key) {
+                        Key.DirectionLeft -> { select(selected - 1); true }
+                        Key.DirectionRight -> { select(selected + 1); true }
+                        Key.DirectionUp, Key.ChannelDown -> { vm.browse(-1); true }
+                        Key.DirectionDown, Key.ChannelUp -> { vm.browse(+1); true }
+                        Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                            if (event.nativeKeyEvent.repeatCount == 0) {
+                                val switching = browsed?.isTuned == false
+                                vm.watchBrowsed()
+                                if (switching) showOverlay()
+                            }
+                            true
+                        }
+                        else -> false
+                    }
+                }
                 when (event.key) {
+                    Key.DirectionRight -> {
+                        overlay = false
+                        anchor = System.currentTimeMillis()
+                        vm.openGuide()
+                        guideInteraction++
+                        true
+                    }
                     Key.DirectionUp, Key.ChannelDown -> { vm.step(-1); showOverlay(); true }
                     Key.DirectionDown, Key.ChannelUp -> { vm.step(+1); showOverlay(); true }
                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
@@ -202,6 +261,19 @@ fun PlayerScreen(channelId: Long, inFavourites: Boolean) {
             modifier = Modifier.align(Alignment.BottomCenter),
         ) {
             tuned?.let { InfoOverlay(it, nowNext, status) }
+        }
+
+        AnimatedVisibility(
+            visible = guideOpen,
+            enter = fadeIn(LumenMotion.focus()) + slideInVertically(LumenMotion.focus()) { it / 4 },
+            exit = fadeOut(LumenMotion.focus()),
+            modifier = Modifier.align(Alignment.BottomCenter),
+        ) {
+            // Keeps showing the last channel while the strip fades out.
+            var last by remember { mutableStateOf(browsed) }
+            var lastSchedule by remember { mutableStateOf(schedule) }
+            browsed?.let { last = it; lastSchedule = schedule }
+            last?.let { GuideStrip(it, lastSchedule, selected, System.currentTimeMillis()) }
         }
     }
 
@@ -298,3 +370,4 @@ private fun InfoOverlay(tuned: Tuned, nowNext: NowNext?, status: Status) {
 
 private const val ZAP_DEBOUNCE_MS = 350L
 private const val OVERLAY_TIMEOUT_MS = 5_000L
+private const val GUIDE_TIMEOUT_MS = 12_000L

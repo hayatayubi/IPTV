@@ -17,6 +17,8 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+import java.time.format.TextStyle
+import java.util.Locale
 
 /** "20:00" or "8:00 PM", following the device's locale. */
 fun formatTime(epochMillis: Long): String =
@@ -26,6 +28,31 @@ fun formatTime(epochMillis: Long): String =
 fun Programme.timeRange(): String = "${formatTime(start)} – ${formatTime(stop)}"
 
 private val timeFormat = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
+
+/** "Tomorrow", "Thursday"…, or null for today. */
+fun dayName(time: Long, now: Long): String? {
+    val zone = ZoneId.systemDefault()
+    val day = Instant.ofEpochMilli(time).atZone(zone).toLocalDate()
+    val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+    return when (day) {
+        today -> null
+        today.plusDays(1) -> "Tomorrow"
+        today.minusDays(1) -> "Yesterday"
+        else -> day.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault())
+    }
+}
+
+/** "45 min", "2 h", "1 h 30 min". */
+fun formatDuration(millis: Long): String {
+    val minutes = (millis / 60_000).toInt()
+    val h = minutes / 60
+    val m = minutes % 60
+    return when {
+        h == 0 -> "$m min"
+        m == 0 -> "$h h"
+        else -> "$h h $m min"
+    }
+}
 
 /** A thin progress bar for how far through a programme we are. */
 @Composable

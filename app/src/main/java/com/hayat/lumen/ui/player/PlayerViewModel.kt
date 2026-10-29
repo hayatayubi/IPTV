@@ -6,10 +6,13 @@ import com.hayat.lumen.data.LiveRepository
 import com.hayat.lumen.data.db.PlayableChannel
 import com.hayat.lumen.data.epg.EpgRepository
 import com.hayat.lumen.data.epg.NowNext
+import com.hayat.lumen.data.epg.Programme
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -19,6 +22,14 @@ import kotlinx.coroutines.launch
 
 data class Tuned(val channel: PlayableChannel, val position: Int, val total: Int)
 
+/** The channel whose guide the player's guide strip shows, and its neighbours in the zapping list. */
+data class Browsed(
+    val channel: PlayableChannel,
+    val isTuned: Boolean,
+    val previous: PlayableChannel?,
+    val next: PlayableChannel?,
+)
+
 /**
  * Which channel is tuned, and the list to zap through with Up/Down: the favourites
  * when [inFavourites] (opened from Home), else the channel's group.
@@ -26,7 +37,7 @@ data class Tuned(val channel: PlayableChannel, val position: Int, val total: Int
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlayerViewModel(
     private val repo: LiveRepository,
-    epg: EpgRepository,
+    private val epg: EpgRepository,
     private val lastChannelId: MutableStateFlow<Long?>,
     startChannelId: Long,
     inFavourites: Boolean,
@@ -42,6 +53,57 @@ class PlayerViewModel(
         .distinctUntilChanged()
         .flatMapLatest { id -> if (id == null) flowOf(null) else epg.nowNext(id) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    // The guide strip: which channel of [list] it shows, or null when it's closed. Browsing never
+    // changes the stream; only [watchBrowsed] does.
+    private val browsing = MutableStateFlow<Int?>(null)
+
+    val browsed: StateFlow<Browsed?> = combine(browsing, _tuned) { index, tuned ->
+        if (index == null || list.isEmpty()) return@combine null
+        Browsed(
+            channel = list[index],
+            isTuned = tuned?.channel?.id == list[index].id,
+            previous = list.getOrNull(Math.floorMod(index - 1, list.size)).takeIf { list.size > 1 },
+            next = list.getOrNull(Math.floorMod(index + 1, list.size)).takeIf { list.size > 1 },
+        )
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** The browsed channel's programmes from now to a day ahead (null while loading). */
+    val schedule: StateFlow<List<Programme>?> = browsed
+        .map { it?.channel?.id }
+        .distinctUntilChanged()
+        .flatMapLatest { id ->
+            if (id == null) {
+                flowOf(null)
+            } else {
+                val now = System.currentTimeMillis()
+                epg.schedule(listOf(id), now, now + GUIDE_AHEAD_MS).map<_, List<Programme>?> { it[id].orEmpty() }.onStart { emit(null) }
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Opens the guide strip on the playing channel. */
+    fun openGuide() {
+        browsing.value = (_tuned.value ?: return).position - 1
+    }
+
+    fun closeGuide() {
+        browsing.value = null
+    }
+
+    /** Shows the guide of the channel above (-1) or below (+1), wrapping like zapping. */
+    fun browse(delta: Int) {
+        val index = browsing.value ?: return
+        if (list.isEmpty()) return
+        browsing.value = Math.floorMod(index + delta, list.size)
+    }
+
+    /** Switches the stream to the browsed channel and closes the strip. */
+    fun watchBrowsed() {
+        val index = browsing.value ?: return
+        browsing.value = null
+        if (index != (_tuned.value?.position ?: 0) - 1) tune(index)
+    }
 
     init {
         viewModelScope.launch {
@@ -64,5 +126,9 @@ class PlayerViewModel(
         val channel = list[index]
         _tuned.value = Tuned(channel, position = index + 1, total = list.size)
         lastChannelId.value = channel.id
+    }
+
+    private companion object {
+        const val GUIDE_AHEAD_MS = 24 * 60 * 60_000L
     }
 }
