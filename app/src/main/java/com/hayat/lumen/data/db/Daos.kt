@@ -233,6 +233,9 @@ interface FavouriteDao {
     @Query("DELETE FROM favourites WHERE sourceId = :sourceId AND stableKey = :stableKey")
     suspend fun remove(sourceId: Long, stableKey: String)
 
+    @Query("UPDATE favourites SET position = :position WHERE sourceId = :sourceId AND stableKey = :stableKey")
+    suspend fun setPosition(sourceId: Long, stableKey: String, position: Int)
+
     @Query("DELETE FROM favourites WHERE sourceId = :sourceId")
     suspend fun removeAllOf(sourceId: Long)
 }

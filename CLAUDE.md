@@ -12,7 +12,9 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
 - **Favourites on launch.** Built (branch `claude/project-thread-pzzcm6`, on top of the guide/EPG work). Not yet checked on the TV.
   - Hold OK on a channel in Live to favourite it (★). Launch opens **Home**: favourites as large 16:9 cards with the logo
     (Coil), and after 1.2 s on a card a muted live preview plays inside it. OK opens the player, zapping through favourites.
-    Hold OK on a card removes it. "All channels" opens Live.
+    Hold OK on a card opens Move / Remove from favourites. Move: the card gets an accent outline, the arrows carry it
+    through the grid (`GridMove`, tested), OK or Back puts it down and saves `favourites.position` (0.3.1).
+    "All channels" opens Live.
 - **TV guide grid.** Built (branch `claude/project-thread-0zjubh`, on top of favourites). Not yet checked on the TV.
   - "TV guide" on Home and Live opens a time grid: channels down, from the last half hour to 24 h ahead across.
     Left/Right = programmes (the window follows), Up/Down = channels at the same time, CH+/CH- = 5 rows, OK = play.

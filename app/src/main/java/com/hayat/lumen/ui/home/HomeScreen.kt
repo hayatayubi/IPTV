@@ -1,11 +1,13 @@
 package com.hayat.lumen.ui.home
 
+import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -13,15 +15,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -34,22 +37,29 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -79,14 +89,16 @@ import com.hayat.lumen.ui.theme.LumenColors
 import com.hayat.lumen.ui.theme.SafeArea
 import com.hayat.lumen.util.ChannelNames
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * The launch screen, Apple TV style: the focused favourite fills the top of the screen
  * (its name, what's on now and next, on a wash of the channel's colour), with the
  * favourites as a row of cards below. Resting on a card for a moment plays it muted
  * inside the card; OK opens it full screen (zapping through favourites), holding OK
- * removes it. "All channels" opens Live, "TV guide" the guide grid. The tabs at the top
- * open Movies and Series. When a newer Lumen is on GitHub, an "Update to …" button appears.
+ * offers Move (the arrows carry the card, OK or Back puts it down) and Remove.
+ * "All channels" opens Live, "TV guide" the guide grid. The tabs at the top open Movies
+ * and Series. When a newer Lumen is on GitHub, an "Update to …" button appears.
  */
 @Composable
 fun HomeScreen(
@@ -103,11 +115,29 @@ fun HomeScreen(
     val vm = viewModel { HomeViewModel(container.live, container.epg) }
     val favourites by vm.favourites.collectAsStateWithLifecycle()
     val guide by vm.nowNext.collectAsStateWithLifecycle()
-    val list = favourites
-    if (list == null) {
+    val saved = favourites
+    if (saved == null) {
         Box(Modifier.fillMaxSize().background(LumenColors.Background))
         return
     }
+
+    // Moving a favourite: [moving] is the card being carried, [order] the order on screen until
+    // it's saved. (Room's list catches up a moment after saving; until then we show ours.)
+    var menuFor by remember { mutableStateOf<FavouriteRow?>(null) }
+    var moving by remember { mutableStateOf<String?>(null) }
+    var order by remember { mutableStateOf<List<FavouriteRow>?>(null) }
+    LaunchedEffect(saved) { if (moving == null) order = null }
+    val list = order ?: saved
+    val scope = rememberCoroutineScope()
+    // Set when OK places a card, so the same press's key-up doesn't also open the channel.
+    var swallowOkUp by remember { mutableStateOf(false) }
+
+    fun drop() {
+        val moved = order
+        moving = null
+        if (moved != null && moved != saved) vm.saveOrder(moved) else order = null
+    }
+    BackHandler(enabled = moving != null) { drop() }
 
     var focusedId by remember { mutableStateOf<Long?>(null) }
     val preview = rememberLivePreview(focusedId, vm::streamUrl)
@@ -156,7 +186,7 @@ fun HomeScreen(
                 TopTabs(selected = Tab.LIVE, onSelect = onTab)
                 if (list.isNotEmpty()) {
                     Text(
-                        "Hold OK on a favourite to remove it",
+                        if (moving != null) "Move with the arrows, then press OK" else "Hold OK on a favourite to move or remove it",
                         style = MaterialTheme.typography.bodySmall,
                         color = LumenColors.TextTertiary,
                         modifier = Modifier.padding(start = 16.dp, top = 4.dp),
@@ -191,26 +221,61 @@ fun HomeScreen(
                         columns = GridCells.Fixed(GridColumns),
                         state = gridState,
                         // focusRestorer: coming back down from the buttons lands on the last focused card.
-                        modifier = Modifier.fillMaxWidth().heightIn(max = twoRows).focusRestorer(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = twoRows)
+                            .focusRestorer()
+                            // While a card is being moved, the arrows move it instead of focus.
+                            // (onPreviewKeyEvent sees keys before the focused card does, like
+                            // overriding pressesBegan on a parent view in UIKit.)
+                            .onPreviewKeyEvent { event ->
+                                val isOk = event.key == Key.DirectionCenter || event.key == Key.Enter
+                                if (isOk && event.type == KeyEventType.KeyUp && swallowOkUp) {
+                                    swallowOkUp = false
+                                    return@onPreviewKeyEvent true
+                                }
+                                val key = moving ?: return@onPreviewKeyEvent false
+                                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent isOk
+                                if (isOk) {
+                                    swallowOkUp = true
+                                    drop()
+                                    return@onPreviewKeyEvent true
+                                }
+                                val direction = when (event.key) {
+                                    Key.DirectionLeft -> GridMove.Direction.LEFT
+                                    Key.DirectionRight -> GridMove.Direction.RIGHT
+                                    Key.DirectionUp -> GridMove.Direction.UP
+                                    Key.DirectionDown -> GridMove.Direction.DOWN
+                                    else -> return@onPreviewKeyEvent false
+                                }
+                                val from = list.indexOfFirst { favouriteKey(it) == key }
+                                val to = GridMove.target(from, list.size, GridColumns, direction)
+                                if (from >= 0 && to != null) {
+                                    order = GridMove.move(list, from, to)
+                                    scope.launch { gridState.keepRowVisible(to) }
+                                }
+                                true // at an edge: stay put rather than letting focus leave the grid
+                            },
                         // Room around the cards for their focus lift and shadow.
                         contentPadding = PaddingValues(GridPadding),
                         horizontalArrangement = Arrangement.spacedBy(GridSpacing),
                         verticalArrangement = Arrangement.spacedBy(GridSpacing),
                     ) {
-                        itemsIndexed(list, key = { _, c -> "${c.sourceId}/${c.stableKey}" }) { index, channel ->
+                        itemsIndexed(list, key = { _, c -> favouriteKey(c) }) { index, channel ->
                             val previewing = preview.channelId == channel.id
                             FavouriteCard(
                                 channel = channel,
                                 now = guide[channel.id]?.now,
                                 player = if (previewing) preview.player else null,
                                 live = previewing && preview.showing,
+                                moving = moving == favouriteKey(channel),
                                 onTint = { tints[channel.id] = it },
                                 onClick = {
                                     preview.handOver()
                                     container.lastChannelId.value = channel.id
                                     onPlay(channel.id)
                                 },
-                                onLongClick = { vm.remove(channel) },
+                                onLongClick = { if (moving == null) menuFor = channel },
                                 modifier = Modifier
                                     .then(if (index == focusIndex) Modifier.focusRequester(cardFocus) else Modifier)
                                     .onFocusChanged {
@@ -223,6 +288,22 @@ fun HomeScreen(
                 }
             }
         }
+    }
+
+    menuFor?.let { channel ->
+        FavouriteMenu(
+            channel = channel,
+            onMove = {
+                menuFor = null
+                order = list
+                moving = favouriteKey(channel)
+            },
+            onRemove = {
+                menuFor = null
+                vm.remove(channel)
+            },
+            onDismiss = { menuFor = null },
+        )
     }
 
     // First focus: the card we came back from (else the first), or the button if there are none.
@@ -295,6 +376,50 @@ private fun Hero(channel: FavouriteRow?, nowNext: NowNext?, modifier: Modifier =
 }
 
 private const val GridColumns = 4
+
+private fun favouriteKey(c: FavouriteRow) = "${c.sourceId}/${c.stableKey}"
+
+/** Scrolls just enough that the row holding [index] is on screen (two rows show at a time). */
+private suspend fun LazyGridState.keepRowVisible(index: Int) {
+    val visible = layoutInfo.visibleItemsInfo
+    val first = visible.firstOrNull()?.index ?: return
+    val last = visible.last().index
+    val rowStart = index - index % GridColumns
+    when {
+        index < first -> animateScrollToItem(rowStart)
+        index > last -> animateScrollToItem((rowStart - GridColumns).coerceAtLeast(0))
+    }
+}
+
+/** Hold OK on a favourite: move it, or take it off Home. */
+@Composable
+private fun FavouriteMenu(channel: FavouriteRow, onMove: () -> Unit, onRemove: () -> Unit, onDismiss: () -> Unit) {
+    val first = remember { FocusRequester() }
+    // A Dialog is its own window: it keeps focus inside itself and Back closes it,
+    // like a SwiftUI .confirmationDialog.
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .width(420.dp)
+                .background(LumenColors.Surface, RoundedCornerShape(24.dp))
+                .padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                ChannelNames.display(channel.name).title,
+                style = MaterialTheme.typography.headlineSmall,
+                color = LumenColors.TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(24.dp))
+            LumenButton(text = "Move", onClick = onMove, modifier = Modifier.fillMaxWidth().focusRequester(first))
+            Spacer(Modifier.height(12.dp))
+            LumenButton(text = "Remove from favourites", onClick = onRemove, modifier = Modifier.fillMaxWidth())
+        }
+    }
+    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+}
 private val GridSpacing = 24.dp
 private val GridPadding = 16.dp
 
@@ -309,6 +434,7 @@ private fun FavouriteCard(
     now: Programme?,
     player: ExoPlayer?,
     live: Boolean,
+    moving: Boolean,
     onTint: (Color) -> Unit,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
@@ -337,6 +463,14 @@ private fun FavouriteCard(
                 )
             }
             if (live) LiveBadge(Modifier.align(Alignment.TopStart).padding(8.dp))
+            // Picked up: an accent outline, so it's clear the arrows now carry this card.
+            if (moving) {
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .border(3.dp, LumenColors.Accent, RoundedCornerShape(16.dp)),
+                )
+            }
             // How far through the current programme, along the bottom edge like Up Next.
             if (now != null) {
                 ProgrammeProgress(

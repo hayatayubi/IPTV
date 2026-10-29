@@ -71,6 +71,15 @@ class LiveRepository(
 
     suspend fun removeFavourite(sourceId: Long, stableKey: String) = favouriteDao.remove(sourceId, stableKey)
 
+    /**
+     * Saves the Home order after the user moved a favourite. Only the favourites on show are
+     * renumbered; hidden ones (hidden playlist, or gone from the playlist) keep their old
+     * number, so they come back roughly where they were.
+     */
+    suspend fun reorderFavourites(order: List<FavouriteRow>) = db.withTransaction {
+        order.forEachIndexed { index, f -> favouriteDao.setPosition(f.sourceId, f.stableKey, index) }
+    }
+
     // Hiding. Chunked because SQLite on older Android allows at most 999 query parameters.
 
     suspend fun hideGroups(sourceId: Long, names: List<String>) = db.withTransaction {
