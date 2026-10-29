@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -20,15 +21,19 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.coerceIn
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.hayat.lumen.data.epg.Programme
 import com.hayat.lumen.ui.components.ChannelLogo
-import com.hayat.lumen.ui.components.ProgrammeProgress
 import com.hayat.lumen.ui.components.QualityTag
 import com.hayat.lumen.ui.components.dayName
 import com.hayat.lumen.ui.components.formatDuration
@@ -57,8 +62,11 @@ object GuidePick {
  * The guide inside the player: a glass strip over the bottom of the video with one channel's
  * programmes from now on. The video keeps playing behind it; the player handles the keys.
  */
+/** Two looks for the programme row, while Hayat picks one. */
+enum class GuideLook { TIMELINE, TEXT }
+
 @Composable
-fun GuideStrip(browsed: Browsed, schedule: List<Programme>?, selected: Int, now: Long) {
+fun GuideStrip(browsed: Browsed, schedule: List<Programme>?, selected: Int, now: Long, look: GuideLook = GuideLook.TIMELINE) {
     val channel = browsed.channel
     Box(
         Modifier
@@ -70,20 +78,20 @@ fun GuideStrip(browsed: Browsed, schedule: List<Programme>?, selected: Int, now:
         Column(
             Modifier
                 .fillMaxWidth()
-                .glass(RoundedCornerShape(28.dp), fill = LumenColors.Background.copy(alpha = 0.78f))
-                .padding(20.dp),
+                .glass(RoundedCornerShape(24.dp), fill = LumenColors.Background.copy(alpha = 0.78f))
+                .padding(horizontal = 20.dp, vertical = 14.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                ChannelLogo(channel.name, channel.logoUrl, size = 56.dp)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                ChannelLogo(channel.name, channel.logoUrl, size = 44.dp)
                 val name = remember(channel.name) { ChannelNames.display(channel.name) }
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         channel.number?.let {
-                            Text(it.toString(), style = MaterialTheme.typography.titleLarge, color = LumenColors.TextSecondary)
+                            Text(it.toString(), style = MaterialTheme.typography.titleMedium, color = LumenColors.TextSecondary)
                         }
                         Text(
                             name.title,
-                            style = MaterialTheme.typography.titleLarge,
+                            style = MaterialTheme.typography.titleMedium,
                             color = LumenColors.TextPrimary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -93,7 +101,7 @@ fun GuideStrip(browsed: Browsed, schedule: List<Programme>?, selected: Int, now:
                     }
                     Text(
                         if (browsed.isTuned) "Watching now" else "Press OK to watch",
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodySmall,
                         color = if (browsed.isTuned) LumenColors.TextSecondary else LumenColors.TextPrimary,
                     )
                 }
@@ -103,11 +111,11 @@ fun GuideStrip(browsed: Browsed, schedule: List<Programme>?, selected: Int, now:
                     browsed.next?.let { Neighbour("▼", it.name) }
                 }
             }
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(12.dp))
             when {
                 schedule == null -> Message("Loading the guide…")
                 schedule.isEmpty() -> Message("No guide info for this channel")
-                else -> Programmes(schedule, selected, now, channelKey = channel.id)
+                else -> Programmes(schedule, selected, now, channelKey = channel.id, look = look)
             }
         }
     }
@@ -133,21 +141,32 @@ private fun Message(text: String) {
 }
 
 @Composable
-private fun Programmes(schedule: List<Programme>, selected: Int, now: Long, channelKey: Long) {
+private fun Programmes(schedule: List<Programme>, selected: Int, now: Long, channelKey: Long, look: GuideLook) {
     val row = rememberLazyListState()
     // A new channel jumps straight to the selection; moving along the same channel slides.
     LaunchedEffect(channelKey) { row.scrollToItem((selected - 1).coerceAtLeast(0)) }
     LaunchedEffect(selected) { row.animateScrollToItem((selected - 1).coerceAtLeast(0)) }
 
-    Column(Modifier.height(ProgrammesHeight)) {
+    Column(Modifier.heightIn(min = ProgrammesHeight)) {
         // Not focusable: the player's key handler moves the selection (like the guide grid).
-        LazyRow(state = row, userScrollEnabled = false, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            itemsIndexed(schedule) { index, programme ->
-                ProgrammeCard(programme, selected = index == selected, now = now)
+        when (look) {
+            GuideLook.TIMELINE -> LazyRow(
+                state = row,
+                userScrollEnabled = false,
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(LumenColors.Glass),
+            ) {
+                itemsIndexed(schedule) { index, programme ->
+                    TimelineSegment(programme, selected = index == selected, now = now, last = index == schedule.lastIndex)
+                }
+            }
+            GuideLook.TEXT -> LazyRow(state = row, userScrollEnabled = false, horizontalArrangement = Arrangement.spacedBy(40.dp)) {
+                itemsIndexed(schedule) { index, programme ->
+                    TextProgramme(programme, selected = index == selected, now = now)
+                }
             }
         }
         val shown = schedule.getOrNull(selected) ?: return@Column
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(10.dp))
         Text(
             buildString {
                 append(shown.title).append("  ·  ")
@@ -156,7 +175,7 @@ private fun Programmes(schedule: List<Programme>, selected: Int, now: Long, chan
                 if (now >= shown.start) append(formatDuration(shown.stop - now)).append(" left")
                 else append(formatDuration(shown.stop - shown.start))
             },
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodySmall,
             color = LumenColors.TextSecondary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -171,38 +190,83 @@ private fun Programmes(schedule: List<Programme>, selected: Int, now: Long, chan
     }
 }
 
+private fun Programme.startLabel(now: Long): String =
+    if (now >= start && now < stop) "Now" else listOfNotNull(dayName(start, now), formatTime(start)).joinToString(" ")
+
+/**
+ * Look 1: one continuous bar, like a slice of the guide grid. Each programme is as wide as it is
+ * long, split by thin lines; the selected one has white text and a white line under it.
+ */
 @Composable
-private fun ProgrammeCard(programme: Programme, selected: Boolean, now: Long) {
+private fun TimelineSegment(programme: Programme, selected: Boolean, now: Long, last: Boolean) {
     val onNow = now >= programme.start && now < programme.stop
-    // White when selected with dark text, as focus looks everywhere else in Lumen.
-    val text = if (selected) LumenColors.Background else LumenColors.TextPrimary
-    val subtle = if (selected) LumenColors.Background.copy(alpha = 0.7f) else LumenColors.TextSecondary
-    Column(
+    val minutes = ((programme.stop - programme.start) / 60_000).toInt()
+    Box(
         Modifier
-            .width(CardWidth)
-            .background(if (selected) Color.White else LumenColors.GlassStrong, RoundedCornerShape(16.dp))
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .width((minutes * 4).dp.coerceIn(180.dp, 420.dp))
+            .height(SegmentHeight)
+            .drawBehind {
+                // How far through it we are, as a lighter fill: the bar's own progress line.
+                if (onNow) drawRect(Color.White.copy(alpha = 0.08f), size = size.copy(width = size.width * programme.progress(now)))
+                if (!last) drawRect(Color.White.copy(alpha = 0.14f), topLeft = Offset(size.width - 1.dp.toPx(), size.height * 0.2f), size = Size(1.dp.toPx(), size.height * 0.6f))
+                if (selected) {
+                    val h = 3.dp.toPx()
+                    drawRect(Color.White, topLeft = Offset(14.dp.toPx(), size.height - h), size = Size(size.width - 28.dp.toPx(), h))
+                }
+            }
+            .padding(horizontal = 14.dp),
+        contentAlignment = Alignment.CenterStart,
     ) {
-        Text(
-            if (onNow) "Now" else listOfNotNull(dayName(programme.start, now), formatTime(programme.start)).joinToString(" "),
-            style = MaterialTheme.typography.labelMedium,
-            color = if (onNow && !selected) LumenColors.Accent else subtle,
-        )
-        Text(
-            programme.title,
-            style = MaterialTheme.typography.titleMedium,
-            color = text,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(Modifier.height(6.dp))
-        if (onNow) {
-            ProgrammeProgress(programme.progress(now), color = text)
-        } else {
-            Spacer(Modifier.height(3.dp))
+        Column {
+            Text(
+                programme.startLabel(now),
+                style = MaterialTheme.typography.labelSmall,
+                color = when {
+                    onNow -> LumenColors.Accent
+                    selected -> LumenColors.TextSecondary
+                    else -> LumenColors.TextTertiary
+                },
+            )
+            Text(
+                programme.title,
+                style = MaterialTheme.typography.titleSmall,
+                color = if (selected) LumenColors.TextPrimary else LumenColors.TextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
 
-private val CardWidth = 260.dp
-private val ProgrammesHeight = 158.dp
+/**
+ * Look 2: no bar at all, just times and titles in a line. The selected one is bright with a short
+ * white line under it; the rest are dimmed.
+ */
+@Composable
+private fun TextProgramme(programme: Programme, selected: Boolean, now: Long) {
+    val onNow = now >= programme.start && now < programme.stop
+    Column(Modifier.widthIn(max = 300.dp).height(SegmentHeight), verticalArrangement = Arrangement.Center) {
+        Text(
+            programme.startLabel(now),
+            style = MaterialTheme.typography.labelSmall,
+            color = if (onNow) LumenColors.Accent else LumenColors.TextTertiary,
+        )
+        Text(
+            programme.title,
+            style = MaterialTheme.typography.titleSmall,
+            color = if (selected) LumenColors.TextPrimary else LumenColors.TextTertiary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(4.dp))
+        Box(
+            Modifier
+                .width(28.dp)
+                .height(3.dp)
+                .background(if (selected) Color.White else Color.Transparent, RoundedCornerShape(2.dp)),
+        )
+    }
+}
+
+private val SegmentHeight = 52.dp
+private val ProgrammesHeight = 112.dp
