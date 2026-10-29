@@ -21,14 +21,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.coerceIn
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -62,11 +57,8 @@ object GuidePick {
  * The guide inside the player: a glass strip over the bottom of the video with one channel's
  * programmes from now on. The video keeps playing behind it; the player handles the keys.
  */
-/** Two looks for the programme row, while Hayat picks one. */
-enum class GuideLook { TIMELINE, TEXT }
-
 @Composable
-fun GuideStrip(browsed: Browsed, schedule: List<Programme>?, selected: Int, now: Long, look: GuideLook = GuideLook.TIMELINE) {
+fun GuideStrip(browsed: Browsed, schedule: List<Programme>?, selected: Int, now: Long) {
     val channel = browsed.channel
     Box(
         Modifier
@@ -115,7 +107,7 @@ fun GuideStrip(browsed: Browsed, schedule: List<Programme>?, selected: Int, now:
             when {
                 schedule == null -> Message("Loading the guide…")
                 schedule.isEmpty() -> Message("No guide info for this channel")
-                else -> Programmes(schedule, selected, now, channelKey = channel.id, look = look)
+                else -> Programmes(schedule, selected, now, channelKey = channel.id)
             }
         }
     }
@@ -141,7 +133,7 @@ private fun Message(text: String) {
 }
 
 @Composable
-private fun Programmes(schedule: List<Programme>, selected: Int, now: Long, channelKey: Long, look: GuideLook) {
+private fun Programmes(schedule: List<Programme>, selected: Int, now: Long, channelKey: Long) {
     val row = rememberLazyListState()
     // A new channel jumps straight to the selection; moving along the same channel slides.
     LaunchedEffect(channelKey) { row.scrollToItem((selected - 1).coerceAtLeast(0)) }
@@ -149,20 +141,9 @@ private fun Programmes(schedule: List<Programme>, selected: Int, now: Long, chan
 
     Column(Modifier.heightIn(min = ProgrammesHeight)) {
         // Not focusable: the player's key handler moves the selection (like the guide grid).
-        when (look) {
-            GuideLook.TIMELINE -> LazyRow(
-                state = row,
-                userScrollEnabled = false,
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(LumenColors.Glass),
-            ) {
-                itemsIndexed(schedule) { index, programme ->
-                    TimelineSegment(programme, selected = index == selected, now = now, last = index == schedule.lastIndex)
-                }
-            }
-            GuideLook.TEXT -> LazyRow(state = row, userScrollEnabled = false, horizontalArrangement = Arrangement.spacedBy(40.dp)) {
-                itemsIndexed(schedule) { index, programme ->
-                    TextProgramme(programme, selected = index == selected, now = now)
-                }
+        LazyRow(state = row, userScrollEnabled = false, horizontalArrangement = Arrangement.spacedBy(40.dp)) {
+            itemsIndexed(schedule) { index, programme ->
+                TextProgramme(programme, selected = index == selected, now = now)
             }
         }
         val shown = schedule.getOrNull(selected) ?: return@Column
@@ -194,53 +175,8 @@ private fun Programme.startLabel(now: Long): String =
     if (now >= start && now < stop) "Now" else listOfNotNull(dayName(start, now), formatTime(start)).joinToString(" ")
 
 /**
- * Look 1: one continuous bar, like a slice of the guide grid. Each programme is as wide as it is
- * long, split by thin lines; the selected one has white text and a white line under it.
- */
-@Composable
-private fun TimelineSegment(programme: Programme, selected: Boolean, now: Long, last: Boolean) {
-    val onNow = now >= programme.start && now < programme.stop
-    val minutes = ((programme.stop - programme.start) / 60_000).toInt()
-    Box(
-        Modifier
-            .width((minutes * 4).dp.coerceIn(180.dp, 420.dp))
-            .height(SegmentHeight)
-            .drawBehind {
-                // How far through it we are, as a lighter fill: the bar's own progress line.
-                if (onNow) drawRect(Color.White.copy(alpha = 0.08f), size = size.copy(width = size.width * programme.progress(now)))
-                if (!last) drawRect(Color.White.copy(alpha = 0.14f), topLeft = Offset(size.width - 1.dp.toPx(), size.height * 0.2f), size = Size(1.dp.toPx(), size.height * 0.6f))
-                if (selected) {
-                    val h = 3.dp.toPx()
-                    drawRect(Color.White, topLeft = Offset(14.dp.toPx(), size.height - h), size = Size(size.width - 28.dp.toPx(), h))
-                }
-            }
-            .padding(horizontal = 14.dp),
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        Column {
-            Text(
-                programme.startLabel(now),
-                style = MaterialTheme.typography.labelSmall,
-                color = when {
-                    onNow -> LumenColors.Accent
-                    selected -> LumenColors.TextSecondary
-                    else -> LumenColors.TextTertiary
-                },
-            )
-            Text(
-                programme.title,
-                style = MaterialTheme.typography.titleSmall,
-                color = if (selected) LumenColors.TextPrimary else LumenColors.TextSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
-}
-
-/**
- * Look 2: no bar at all, just times and titles in a line. The selected one is bright with a short
- * white line under it; the rest are dimmed.
+ * One programme: its time and title, no box (a box would look like a button). The selected one is
+ * bright with a short white line under it; the rest are dimmed.
  */
 @Composable
 private fun TextProgramme(programme: Programme, selected: Boolean, now: Long) {
