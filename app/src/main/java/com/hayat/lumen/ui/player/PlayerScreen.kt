@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -56,6 +57,7 @@ import com.hayat.lumen.ui.components.QualityTag
 import com.hayat.lumen.ui.components.ProgrammeProgress
 import com.hayat.lumen.ui.components.formatTime
 import com.hayat.lumen.ui.components.timeRange
+import com.hayat.lumen.ui.components.glass
 import com.hayat.lumen.ui.theme.LumenColors
 import com.hayat.lumen.util.ChannelNames
 import com.hayat.lumen.ui.theme.LumenMotion
@@ -212,11 +214,19 @@ private fun InfoOverlay(tuned: Tuned, nowNext: NowNext?, status: Status) {
     Box(
         Modifier
             .fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))))
+            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.5f))))
             .padding(horizontal = SafeArea.Horizontal, vertical = SafeArea.Vertical)
             .padding(top = 96.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+        // A dark frosted panel: over video a light one would wash out.
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .glass(RoundedCornerShape(28.dp), fill = LumenColors.Background.copy(alpha = 0.72f))
+                .padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(24.dp),
+        ) {
             ChannelLogo(channel.name, channel.logoUrl, size = 72.dp)
             val name = remember(channel.name) { ChannelNames.display(channel.name) }
             Column(Modifier.weight(1f)) {

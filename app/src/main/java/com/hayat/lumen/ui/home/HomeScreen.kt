@@ -83,8 +83,11 @@ import com.hayat.lumen.ui.components.ProgrammeProgress
 import com.hayat.lumen.ui.components.QualityTag
 import com.hayat.lumen.ui.components.Tab
 import com.hayat.lumen.ui.components.TopTabs
+import com.hayat.lumen.ui.components.Ambient
+import com.hayat.lumen.ui.components.rememberLivePreview
 import com.hayat.lumen.ui.components.formatTime
 import com.hayat.lumen.ui.components.timeRange
+import com.hayat.lumen.ui.components.ambient
 import com.hayat.lumen.ui.theme.LumenColors
 import com.hayat.lumen.ui.theme.SafeArea
 import com.hayat.lumen.util.ChannelNames
@@ -116,7 +119,7 @@ fun HomeScreen(
     val guide by vm.nowNext.collectAsStateWithLifecycle()
     val saved = favourites
     if (saved == null) {
-        Box(Modifier.fillMaxSize().background(LumenColors.Background))
+        Box(Modifier.fillMaxSize().ambient())
         return
     }
 
@@ -155,41 +158,15 @@ fun HomeScreen(
     var heroId by remember { mutableStateOf(returnTo) }
     LaunchedEffect(focusedId) { focusedId?.let { heroId = it } }
     val hero = list.firstOrNull { it.id == heroId } ?: list.firstOrNull()
-    val wash by animateColorAsState(
-        hero?.let { tints[it.id] } ?: LumenColors.Background,
-        animationSpec = tween(600),
-        label = "wash",
-    )
 
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(LumenColors.Background)
-            .drawBehind {
-                // A soft glow of the channel's colour from the top left, fading into the background.
-                drawRect(
-                    Brush.radialGradient(
-                        listOf(wash.copy(alpha = 0.55f), wash.copy(alpha = 0.18f), Color.Transparent),
-                        center = Offset(size.width * 0.2f, 0f),
-                        radius = size.width * 0.75f,
-                    ),
-                )
-            },
-    ) {
+    // The focused channel's colour glows from the top left.
+    Ambient(tint = hero?.let { tints[it.id] }) {
         Column(
             Modifier
                 .fillMaxSize()
                 .padding(horizontal = SafeArea.Horizontal, vertical = SafeArea.Vertical),
         ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                TopTabs(selected = Tab.LIVE, onSelect = onTab)
-                // A weighted child is measured last in a Row (like a low compression-resistance
-                // priority in Auto Layout), so the buttons always get their full width first.
-                Spacer(Modifier.weight(1f))
-                LumenButton(text = "All channels", onClick = onBrowse, modifier = Modifier.focusRequester(buttonFocus))
-                Spacer(Modifier.width(12.dp))
-                LumenButton(text = "TV guide", onClick = onOpenGuide)
-            }
+            TopTabs(selected = Tab.LIVE, onSelect = onTab)
 
             if (list.isEmpty()) {
                 Spacer(Modifier.height(96.dp))
@@ -200,23 +177,36 @@ fun HomeScreen(
                     style = MaterialTheme.typography.bodyLarge,
                     color = LumenColors.TextSecondary,
                 )
+                Spacer(Modifier.height(24.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    LumenButton(text = "All channels", onClick = onBrowse, modifier = Modifier.focusRequester(buttonFocus))
+                    LumenButton(text = "TV guide", onClick = onOpenGuide)
+                }
             } else {
                 Hero(hero, hero?.let { guide[it.id] }, Modifier.weight(1f).fillMaxWidth())
-                // The hint sits with the cards it's about (it used to share the top line, where an
-                // "Update to …" button ran over it).
+                // "Favourites", the hint, and the way to everything else. A weighted child is
+                // measured last in a Row (like a low compression-resistance priority in Auto
+                // Layout), so the buttons always get their full width and the hint gives way.
                 val ready = update
-                Text(
-                    when {
-                        moving != null -> "Move with the arrows, then press OK"
-                        ready != null -> "Lumen ${ready.version} is ready. Open Settings to update."
-                        else -> "Hold OK on a favourite to move or remove it"
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (ready != null && moving == null) LumenColors.Accent else LumenColors.TextTertiary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(start = GridPadding),
-                )
+                Row(Modifier.fillMaxWidth().padding(horizontal = GridPadding), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Favourites", style = MaterialTheme.typography.titleLarge, color = LumenColors.TextPrimary)
+                    Spacer(Modifier.width(16.dp))
+                    Text(
+                        when {
+                            moving != null -> "Move with the arrows, then press OK"
+                            ready != null -> "Lumen ${ready.version} is ready. Open Settings to update."
+                            else -> "Hold OK on a favourite to move or remove it"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (ready != null && moving == null) LumenColors.Accent else LumenColors.TextTertiary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    LumenButton(text = "All channels", onClick = onBrowse, modifier = Modifier.focusRequester(buttonFocus))
+                    Spacer(Modifier.width(12.dp))
+                    LumenButton(text = "TV guide", onClick = onOpenGuide)
+                }
                 // Four across, so up to eight favourites show at once; more than that scroll.
                 BoxWithConstraints(Modifier.fillMaxWidth()) {
                     val cardWidth = (maxWidth - GridPadding * 2 - GridSpacing * (GridColumns - 1)) / GridColumns
@@ -334,7 +324,7 @@ private fun Hero(channel: FavouriteRow?, nowNext: NowNext?, modifier: Modifier =
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text(
                         name.title,
-                        style = MaterialTheme.typography.displaySmall,
+                        style = MaterialTheme.typography.headlineLarge,
                         color = LumenColors.TextPrimary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -343,8 +333,9 @@ private fun Hero(channel: FavouriteRow?, nowNext: NowNext?, modifier: Modifier =
                     name.tags.forEach { QualityTag(it) }
                 }
                 val now = info?.now
+                // Compact: the hero shares the screen with two rows of cards and the top bar.
                 if (now != null) {
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(6.dp))
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(
                             now.title,
@@ -355,17 +346,16 @@ private fun Hero(channel: FavouriteRow?, nowNext: NowNext?, modifier: Modifier =
                             modifier = Modifier.weight(1f, fill = false),
                         )
                         Text(now.timeRange(), style = MaterialTheme.typography.bodyLarge, color = LumenColors.TextSecondary)
+                        ProgrammeProgress(
+                            now.progress(System.currentTimeMillis()),
+                            color = LumenColors.TextPrimary,
+                            modifier = Modifier.width(140.dp),
+                            height = 4.dp,
+                        )
                     }
-                    Spacer(Modifier.height(10.dp))
-                    ProgrammeProgress(
-                        now.progress(System.currentTimeMillis()),
-                        color = LumenColors.TextPrimary,
-                        modifier = Modifier.width(360.dp),
-                        height = 4.dp,
-                    )
                 }
                 info?.next?.let { next ->
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(6.dp))
                     Text(
                         "Next   ${formatTime(next.start)}   ${next.title}",
                         style = MaterialTheme.typography.bodyLarge,
@@ -502,83 +492,4 @@ private fun LiveBadge(modifier: Modifier = Modifier) {
     )
 }
 
-/** What the focused card's muted preview is doing. Compose re-reads these when they change. */
-@Stable
-private class LivePreview {
-    var channelId by mutableStateOf<Long?>(null)
-    var player by mutableStateOf<ExoPlayer?>(null)
-    /** True once the first video frame has rendered. */
-    var showing by mutableStateOf(false)
-    /** Set when OK opens the player, so the stream keeps running for it. */
-    var handedOver = false
 
-    fun handOver() {
-        handedOver = true
-    }
-
-    fun clear() {
-        channelId = null
-        player = null
-        showing = false
-    }
-}
-
-/**
- * Plays [focusedId] muted, [PREVIEW_DELAY_MS] after focus settles on it. Uses the app's one
- * ExoPlayer, so there is only ever one decoder and one provider connection: moving focus stops
- * the old stream at once, and opening the previewed channel reuses its stream.
- */
-@Composable
-private fun rememberLivePreview(focusedId: Long?, streamUrl: suspend (Long) -> String?): LivePreview {
-    val container = LocalAppContainer.current
-    val state = remember { LivePreview() }
-    val owner = remember { Any() }
-    var started by remember { mutableStateOf(false) }
-
-    fun stop() {
-        if (!state.handedOver) container.player.stop(owner)
-        state.clear()
-    }
-
-    LifecycleStartEffect(Unit) {
-        started = true
-        state.handedOver = false
-        onStopOrDispose {
-            started = false
-            stop()
-        }
-    }
-
-    LaunchedEffect(focusedId, started) {
-        if (state.player != null) stop()
-        if (!started || focusedId == null || state.handedOver) return@LaunchedEffect
-        delay(PREVIEW_DELAY_MS)
-        val url = streamUrl(focusedId) ?: return@LaunchedEffect
-        val p = container.player.acquire(owner)
-        p.volume = 0f
-        p.setMediaItem(PlayerHolder.mediaItem(url))
-        p.prepare()
-        p.playWhenReady = true
-        state.channelId = focusedId
-        state.player = p
-    }
-
-    DisposableEffect(state.player) {
-        val p = state.player ?: return@DisposableEffect onDispose { }
-        val listener = object : Player.Listener {
-            override fun onRenderedFirstFrame() {
-                state.showing = true
-            }
-
-            override fun onPlayerError(error: PlaybackException) {
-                // Leave the logo up; a preview isn't worth retrying.
-                state.showing = false
-            }
-        }
-        p.addListener(listener)
-        onDispose { p.removeListener(listener) }
-    }
-    return state
-}
-
-private const val PREVIEW_DELAY_MS = 1_200L

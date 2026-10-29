@@ -36,6 +36,7 @@ import com.hayat.lumen.data.LiveRepository
 import com.hayat.lumen.data.xtream.XtreamLogin
 import com.hayat.lumen.ui.components.LumenButton
 import com.hayat.lumen.ui.components.LumenTextField
+import com.hayat.lumen.ui.components.ambient
 import com.hayat.lumen.ui.theme.LumenColors
 import com.hayat.lumen.ui.theme.SafeArea
 import kotlinx.coroutines.CancellationException
@@ -116,7 +117,7 @@ fun AddSourceScreen(onAdded: () -> Unit) {
     Box(
         Modifier
             .fillMaxSize()
-            .background(LumenColors.Background)
+            .ambient()
             .padding(horizontal = SafeArea.Horizontal, vertical = SafeArea.Vertical),
         contentAlignment = Alignment.Center,
     ) {

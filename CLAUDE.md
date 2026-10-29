@@ -33,7 +33,10 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
 - **Over-the-air updates.** Merged into main (PR #11). Not yet checked on the TV.
   - Home shows "Update to 0.3.0" when GitHub Releases has a newer version → Update screen: what's new, Install update
     (first time: "Allow updates" opens Android's Install unknown apps switch), download progress, Android's confirm.
-- **Settings page (0.4.0).** Built on branch `claude/project-thread-p17iln`. Not yet checked on the TV.
+- **Chillio-style look (0.5.0).** Built on branch `claude/project-thread-p17iln`. Not yet checked on the TV (Hayat approved
+  the Home and guide screenshots 2026-10-29). Colour instead of black, frosted glass, white focus, big VOD backdrops,
+  IMDb / Rotten Tomatoes / age rating on film and series pages.
+- **Settings page (0.4.0).** Merged (PR #15). Not yet checked on the TV.
   - "Settings" pill at the end of the top tabs (blue dot while an update waits; Home's hint line says so too; the old
     "Update to …" button on Home is gone). Menu left, section right: Playlists (OK = Refresh / Rename / Change link or
     login / Hide / Remove, plus Add playlist), TV guide, Live categories (OK hide, hold OK rename), Movie and Series
@@ -155,6 +158,23 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
   - `LumenTextField`: the keyboard opens only on OK, not on focus.
   - `Monogram`: fallback tile.
   - `LumenCard`: poster tile for Phase 4.
+- **Look (0.5.0, Chillio/Apple TV inspired; Hayat keeps Inter, wants colour not black)**: screens sit on `Ambient`
+  (`ui/components/Glass.kt`: dark base + a cool glow top left, tinted by the focused channel's logo colour on Home and in
+  the guide, and a warm glow bottom right; `Modifier.ambient()` for Row/Column roots). Bars, buttons, panels =
+  `Modifier.glass()` (white 7–13% fill + 10% edge; real blur is too heavy for the 2 GB TV); dark glass over video.
+  Focus = solid white with dark text; blue only for ticks, LIVE, the update dot. `TopTabs` = one centred glass pill
+  (search icon · Live TV · Movies · Series · settings gear) + `Clock` on the right; `Tab.SEARCH`/`Tab.SETTINGS` open
+  screens. `LumenButton(primary = true)` = white Play pill; `icon =` vector icons in `res/drawable/ic_*.xml` (Material
+  Icons, Apache 2.0). Home: hero, then "Favourites" + hint + All channels / TV guide, then the grid. Guide: glass
+  details panel with the focused live channel previewing muted on the right (`ui/components/LivePreview.kt`, shared with
+  Home). VOD: full-screen backdrops, category tiles (3 fanned posters) at the top of each tab, heart = My List.
+- **Ratings**: `data/ratings/OmdbClient.ratings(key, title, year, series)` (OMDb `t=`/`y=`/`type=`), in-memory LRU, null
+  without the user's key. Shown big, as in Chillio, by `RatingsPanel` (drawn tomato/splat + "Tomatometer", IMDb box + votes, age box): its own
+  "Ratings" row under the film page's buttons, at the right of the series page's buttons; the provider's
+  ★ shows only when OMDb has nothing. Common Sense Media has no free API (paid licence), so the age rating stands in.
+- Screenshots in cloud sessions: Robolectric 4.17 + Roborazzi render screens with test data (kept out of the repo:
+  needs `robolectric.dependency.repo.url` = the Google Maven mirror, `roborazzi.test.record=true`, the compose clock
+  frozen so the 1.2 s live preview never starts). Coil images don't load there.
 - Motion: `LumenMotion.focus()` = 180 ms ease-out. Safe area: `SafeArea` (48 dp × 27 dp).
 
 ## Known issues

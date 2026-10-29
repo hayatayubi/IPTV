@@ -37,7 +37,7 @@ fun LumenListItem(
         modifier = modifier.fillMaxWidth(),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = if (selected) LumenColors.Surface else Color.Transparent,
+            containerColor = if (selected) LumenColors.GlassStrong else Color.Transparent,
             contentColor = if (selected) LumenColors.TextPrimary else LumenColors.TextSecondary,
             focusedContainerColor = LumenColors.TextPrimary,
             focusedContentColor = LumenColors.Background,

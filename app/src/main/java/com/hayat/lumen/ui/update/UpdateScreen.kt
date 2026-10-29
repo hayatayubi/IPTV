@@ -27,6 +27,7 @@ import com.hayat.lumen.LocalAppContainer
 import com.hayat.lumen.data.update.InstallState
 import com.hayat.lumen.ui.components.LumenButton
 import com.hayat.lumen.ui.components.ProgrammeProgress
+import com.hayat.lumen.ui.components.ambient
 import com.hayat.lumen.ui.theme.LumenColors
 import com.hayat.lumen.ui.theme.SafeArea
 
@@ -54,7 +55,7 @@ fun UpdateScreen() {
     Column(
         Modifier
             .fillMaxSize()
-            .background(LumenColors.Background)
+            .ambient()
             .padding(horizontal = SafeArea.Horizontal * 2, vertical = SafeArea.Vertical * 2)
             .widthIn(max = 900.dp),
     ) {
