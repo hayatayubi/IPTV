@@ -1,6 +1,7 @@
 # Lumen
 
-A minimal, Apple TV–style IPTV player for Google TV, written in Kotlin with Jetpack Compose for TV.
+A beautifully simple IPTV player for Android TV, Google TV and Fire TV (Fire OS 8), designed to feel like it came with
+your TV. Written in Kotlin with Jetpack Compose for TV. Website: https://lumen-tv.github.io
 
 **Lumen is only a player: it comes with no channels, films or playlists.** You add a playlist or Xtream login
 from your own provider. Lumen collects no data (see the [privacy policy](PRIVACY.md)).
@@ -25,10 +26,11 @@ from your own provider. Lumen collects no data (see the [privacy policy](PRIVACY
 Lumen isn't on the Play Store. You install it once with the free **Downloader** app, and after that it updates
 itself.
 
-1. On the TV, install **Downloader** (by AFTVnews) from the Play Store.
-2. Allow it to install apps: *Settings → Apps → Security & restrictions → Unknown sources → Downloader* (on).
-3. Open Downloader and enter this link (it always points at the newest version):
-   `https://github.com/hayatayubi/IPTV/releases/latest/download/lumen.apk`
+1. On the TV, install **Downloader** (by AFTVnews) from its app store.
+2. Allow it to install apps (most TVs ask the first time). Android TV / Google TV: *Settings → Apps → Security &
+   restrictions → Unknown sources → Downloader*. Fire TV: *Settings → My Fire TV → Developer options → Install unknown
+   apps → Downloader*.
+3. Open Downloader and enter `lumen-tv.github.io/get` (it always gives the newest version).
 4. Choose **Install**. Lumen appears in your apps.
 
 **Updates:** when a new version is out, Lumen's Home screen shows an "Update to …" button. The first time, it asks you

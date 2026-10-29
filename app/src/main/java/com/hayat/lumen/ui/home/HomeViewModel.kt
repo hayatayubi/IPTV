@@ -35,5 +35,9 @@ class HomeViewModel(private val repo: LiveRepository, epg: EpgRepository) : View
         viewModelScope.launch { repo.removeFavourite(channel.sourceId, channel.stableKey) }
     }
 
+    fun saveOrder(order: List<FavouriteRow>) {
+        viewModelScope.launch { repo.reorderFavourites(order) }
+    }
+
     suspend fun streamUrl(channelId: Long): String? = repo.channel(channelId)?.streamUrl
 }

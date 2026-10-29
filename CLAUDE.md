@@ -12,7 +12,9 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
 - **Favourites on launch.** Built (branch `claude/project-thread-pzzcm6`, on top of the guide/EPG work). Not yet checked on the TV.
   - Hold OK on a channel in Live to favourite it (★). Launch opens **Home**: favourites as large 16:9 cards with the logo
     (Coil), and after 1.2 s on a card a muted live preview plays inside it. OK opens the player, zapping through favourites.
-    Hold OK on a card removes it. "All channels" opens Live.
+    Hold OK on a card opens Move / Remove from favourites. Move: the card gets an accent outline, the arrows carry it
+    through the grid (`GridMove`, tested), OK or Back puts it down and saves `favourites.position` (0.3.1).
+    "All channels" opens Live.
 - **TV guide grid.** Built (branch `claude/project-thread-0zjubh`, on top of favourites). Not yet checked on the TV.
   - "TV guide" on Home and Live opens a time grid: channels down, from the last half hour to 24 h ahead across.
     Left/Right = programmes (the window follows), Up/Down = channels at the same time, CH+/CH- = 5 rows, OK = play.
@@ -118,7 +120,7 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
   (major·10000 + minor·100 + patch, so 0.2.0 = 200; it was 2 before). `.github/workflows/release.yml` runs on every push
   to main: if release `v<lumenVersion>` doesn't exist, it builds `assembleRelease` and publishes it with `lumen-<v>.apk`
   and the commit titles since the last tag as notes. **To ship an update, bump `lumenVersion` in the PR.**
-  The app checks `api.github.com/repos/hayatayubi/IPTV/releases/latest` (public repo, no token) at launch, when Home shows
+  The app checks `api.github.com/repos/lumen-tv/Lumen-TV/releases/latest` (public repo, no token) at launch, when Home shows
   (at most every 6 h) and with Live's Refresh. Install streams the APK into a `PackageInstaller` session (no file, no
   FileProvider), result via `InstallResultReceiver`; `USER_ACTION_NOT_REQUIRED` is requested, so once Lumen is its own
   installer of record later updates may skip the confirm screen. Needs `REQUEST_INSTALL_PACKAGES` + the user's one-time
@@ -126,7 +128,9 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
 - **Public release (Route 1, from 0.3.0)**: distributed on GitHub Releases only (no Play Store yet). Releases are
   signed with a **private key** (`LUMEN_KEYSTORE*` Actions secrets, set up per `docs/RELEASING.md`; the workflow fails
   without them). The asset is always `lumen.apk`, so `releases/latest/download/lumen.apk` is a stable link for the
-  Downloader app. `PRIVACY.md` = privacy policy. The brand logo tiles stay in the public build (Hayat's choice
+  Downloader app. Repo moved 2026-10-28 from hayatayubi/IPTV to the **lumen-tv** organisation as `lumen-tv/Lumen-TV`
+  (Hayat didn't want their name in links). Public page: https://lumen-tv.github.io (repo `lumen-tv/lumen-tv.github.io`),
+  `/get` forwards to the newest APK. `PRIVACY.md` = privacy policy. The brand logo tiles stay in the public build (Hayat's choice
   2026-10-28; they'd have to go for Google Play).
 - Shared debug keystore in `keystore/`: signs debug builds and local release builds, so cloud and laptop builds install
   over each other. It can't install over a published (privately signed) release, or the reverse.
