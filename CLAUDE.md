@@ -36,6 +36,11 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
 - **Chillio-style look (0.5.0).** Built on branch `claude/project-thread-p17iln`. Not yet checked on the TV (Hayat approved
   the Home and guide screenshots 2026-10-29). Colour instead of black, frosted glass, white focus, big VOD backdrops,
   IMDb / Rotten Tomatoes / age rating on film and series pages.
+- **Guide in the player (0.6.0).** Built on branch `claude/project-thread-p17iln`. Not yet checked on the TV.
+  - Right while a channel plays opens a glass strip (`ui/player/PlayerGuide.kt`) with that channel's programmes for the next
+    24 h. Left/Right = programmes, Up/Down (and CH+/-) = the guide of the channel above/below in the zapping list while the
+    stream keeps playing (keeps the same time, `GuidePick`), OK = watch that channel, Back or 12 s idle = close.
+    Programmes are plain time + title text, no boxes (Hayat: boxes looked selectable), selected = bright + white underline.
 - **Settings page (0.4.0).** Merged (PR #15). Not yet checked on the TV.
   - "Settings" pill at the end of the top tabs (blue dot while an update waits; Home's hint line says so too; the old
     "Update to …" button on Home is gone). Menu left, section right: Playlists (OK = Refresh / Rename / Change link or
