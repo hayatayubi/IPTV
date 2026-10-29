@@ -294,7 +294,7 @@ private fun InfoOverlay(tuned: Tuned, nowNext: NowNext?, status: Status) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .glass(RoundedCornerShape(28.dp), fill = LumenColors.Background.copy(alpha = 0.72f))
+                .glass(RoundedCornerShape(28.dp), fill = LumenColors.Background.copy(alpha = 0.9f))
                 .padding(20.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(24.dp),

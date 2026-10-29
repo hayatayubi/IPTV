@@ -63,14 +63,15 @@ fun GuideStrip(browsed: Browsed, schedule: List<Programme>?, selected: Int, now:
     Box(
         Modifier
             .fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f))))
+            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f))))
             .padding(horizontal = SafeArea.Horizontal, vertical = SafeArea.Vertical)
             .padding(top = 96.dp),
     ) {
         Column(
             Modifier
                 .fillMaxWidth()
-                .glass(RoundedCornerShape(24.dp), fill = LumenColors.Background.copy(alpha = 0.78f))
+                // Nearly solid: text over moving video has to stay easy to read.
+                .glass(RoundedCornerShape(24.dp), fill = LumenColors.Background.copy(alpha = 0.92f))
                 .padding(horizontal = 20.dp, vertical = 14.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -118,7 +119,7 @@ private fun Neighbour(arrow: String, name: String) {
     Text(
         "$arrow  ${ChannelNames.display(name).title}",
         style = MaterialTheme.typography.labelMedium,
-        color = LumenColors.TextTertiary,
+        color = LumenColors.TextSecondary,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
     )
@@ -164,7 +165,7 @@ private fun Programmes(schedule: List<Programme>, selected: Int, now: Long, chan
         Text(
             shown.description?.takeIf { it.isNotBlank() } ?: "No description",
             style = MaterialTheme.typography.bodyMedium,
-            color = LumenColors.TextPrimary.copy(alpha = 0.85f),
+            color = LumenColors.TextPrimary,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
@@ -185,12 +186,12 @@ private fun TextProgramme(programme: Programme, selected: Boolean, now: Long) {
         Text(
             programme.startLabel(now),
             style = MaterialTheme.typography.labelSmall,
-            color = if (onNow) LumenColors.Accent else LumenColors.TextTertiary,
+            color = if (onNow) LumenColors.Accent else LumenColors.TextSecondary,
         )
         Text(
             programme.title,
             style = MaterialTheme.typography.titleSmall,
-            color = if (selected) LumenColors.TextPrimary else LumenColors.TextTertiary,
+            color = if (selected) LumenColors.TextPrimary else LumenColors.TextSecondary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
