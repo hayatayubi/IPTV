@@ -167,7 +167,7 @@ fun VodBrowseScreen(
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         // Every category as a small pill, a quick way to "See all" of one.
-                        if (rows.size > 1 && showCategoryChips) {
+                        if (rows.size > 1) {
                             item(key = "chips") {
                                 LazyRow(
                                     modifier = Modifier.fillMaxWidth().focusRestorer(),
@@ -272,9 +272,6 @@ private fun PosterRow(
 
 /** One row plus the next row's title peeking in, so you can tell there's more below. */
 private val RowsHeight = 290.dp
-
-/** Whether the category pills show. A switch only while Hayat compares the tab with and without them. */
-internal var showCategoryChips = true
 
 /** A category as a glass pill: its tidied name, its quality tag and how many titles it has. */
 @Composable

@@ -29,7 +29,9 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
     bottom of the tab. Search (films + series) from the tab. Film page: Play / Resume from 42:10 / Start over / My List.
     Series page: Resume S1 · E3, seasons, episodes with progress. Player: OK pause, Left/Right 10 s (quick taps grow to 30 s, 1 min; holding ramps from 1 min/s to 20 min/s
     by hold time, see `SeekRamp`; "+12:30" shows while seeking),
-    Up = audio/subtitles, Up next countdown at the end of an episode.
+    Up (or Down to the "Audio & Subtitles" button, then OK) = audio/subtitles; long track lists show the chosen track,
+    the TV's language and English first, the rest behind "More languages" (`TrackPicks`, tested).
+    Up next countdown at the end of an episode.
 - **Over-the-air updates.** Merged into main (PR #11). Not yet checked on the TV.
   - Home shows "Update to 0.3.0" when GitHub Releases has a newer version → Update screen: what's new, Install update
     (first time: "Allow updates" opens Android's Install unknown apps switch), download progress, Android's confirm.
