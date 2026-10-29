@@ -9,6 +9,8 @@ import coil3.request.crossfade
 import com.hayat.lumen.data.LiveRepository
 import com.hayat.lumen.data.db.LumenDatabase
 import com.hayat.lumen.data.epg.EpgRepository
+import com.hayat.lumen.data.ratings.OmdbClient
+import com.hayat.lumen.data.settings.Preferences
 import com.hayat.lumen.data.update.UpdateRepository
 import com.hayat.lumen.data.vod.VodRepository
 import com.hayat.lumen.playback.PlayerHolder
@@ -45,6 +47,8 @@ class AppContainer(context: Context) {
     val vod = VodRepository(db, http, appScope)
     val player = PlayerHolder(appContext, http)
     val updates = UpdateRepository(appContext, http, appScope)
+    val prefs = Preferences(appContext)
+    val omdb = OmdbClient(http)
 
     /** Loads channel logos through [http] (same user agent). Memory cache kept small for the 2 GB TV. */
     val images: ImageLoader = ImageLoader.Builder(appContext)

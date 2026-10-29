@@ -90,11 +90,23 @@ data class HiddenGroupEntity(
     val groupName: String,
 )
 
-/** Projection for the Live groups column. */
+/**
+ * A category the user renamed. Keyed on the provider's name, like [HiddenGroupEntity], so the
+ * new name survives refreshes. If the provider renames the category itself, this no longer applies.
+ */
+@Entity(tableName = "renamed_groups", primaryKeys = ["sourceId", "groupName"])
+data class RenamedGroupEntity(
+    val sourceId: Long,
+    val groupName: String,
+    val label: String,
+)
+
+/** Projection for the Live groups column. [name] is the provider's (the key); [label] is what to show. */
 data class GroupRow(
     val sourceId: Long,
     val sourceName: String,
     val name: String,
+    val label: String,
     val channelCount: Int,
 )
 
@@ -102,6 +114,7 @@ data class GroupRow(
 data class CategoryRow(
     val sourceId: Long,
     val name: String,
+    val label: String,
     val channelCount: Int,
     val hidden: Boolean,
 )
@@ -133,6 +146,8 @@ data class PlayableChannel(
     val number: Int?,
     val streamUrl: String,
     val groupName: String,
+    /** The group's name as shown (the user's rename, else [groupName]). */
+    val groupLabel: String,
     val playlistOrder: Int,
     val logoUrl: String?,
 )

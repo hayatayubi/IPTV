@@ -103,7 +103,7 @@ class LiveViewModel(
         viewModelScope.launch { repo.hideGroups(group.sourceId, listOf(group.name)) }
         noticeJob?.cancel()
         noticeJob = viewModelScope.launch {
-            _notice.value = "Hid “${group.name}”. Show it again in Categories."
+            _notice.value = "Hid “${group.label}”. Show it again in Categories."
             delay(4_000)
             _notice.value = null
         }

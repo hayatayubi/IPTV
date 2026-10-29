@@ -7,6 +7,7 @@ import com.hayat.lumen.data.db.ChannelGroupEntity
 import com.hayat.lumen.data.db.FavouriteRow
 import com.hayat.lumen.data.db.GroupRow
 import com.hayat.lumen.data.db.HiddenGroupEntity
+import com.hayat.lumen.data.db.RenamedGroupEntity
 import com.hayat.lumen.data.db.LumenDatabase
 import com.hayat.lumen.data.db.SourceEntity
 import com.hayat.lumen.data.db.SourceType
@@ -92,6 +93,46 @@ class LiveRepository(
 
     suspend fun setSourceHidden(sourceId: Long, hidden: Boolean) = sourceDao.setHidden(sourceId, hidden)
 
+    // Renaming. Display only: the provider's names stay the keys (for hiding, the player's group, the guide).
+
+    /** A blank [label], or the provider's own name, puts the provider's name back. */
+    suspend fun renameGroup(sourceId: Long, groupName: String, label: String) {
+        val clean = label.trim()
+        if (clean.isEmpty() || clean == groupName) db.renames().resetGroup(sourceId, groupName)
+        else db.renames().renameGroup(RenamedGroupEntity(sourceId, groupName, clean))
+    }
+
+    suspend fun renameSource(sourceId: Long, name: String) {
+        name.trim().takeIf { it.isNotEmpty() }?.let { sourceDao.rename(sourceId, it) }
+    }
+
+    /**
+     * Points a playlist at a new link ([url]) or Xtream login, then refreshes it. If that import
+     * fails, the old link comes back, so a typo never breaks a working playlist. A blank
+     * [password] keeps the current one. Favourites, hidden and renamed categories are kept.
+     */
+    suspend fun changeConnection(
+        sourceId: Long,
+        url: String? = null,
+        login: XtreamLogin? = null,
+        onProgress: (Int) -> Unit,
+    ): ImportResult {
+        val old = sourceDao.get(sourceId) ?: throw ImportException("This playlist no longer exists.")
+        val xtreamLogin = login ?: url?.let(XtreamLogin::fromPlaylistUrl)
+        if (xtreamLogin != null) {
+            sourceDao.setConnection(sourceId, SourceType.XTREAM, xtreamLogin.server.toString(), xtreamLogin.username, xtreamLogin.password)
+        } else {
+            val link = url?.trim()?.takeIf { it.isNotEmpty() } ?: throw ImportException("Paste a playlist link first.")
+            sourceDao.setConnection(sourceId, SourceType.M3U, link, null, null)
+        }
+        return try {
+            refresh(sourceId, onProgress)
+        } catch (e: Throwable) {
+            withContext(NonCancellable) { sourceDao.setConnection(sourceId, old.type, old.url, old.username, old.password) }
+            throw e
+        }
+    }
+
     /**
      * Adds an M3U source and imports it. If the first import fails, the source is removed again.
      * Xtream `get.php` links are stored as an Xtream login instead: many providers block that
@@ -131,6 +172,8 @@ class LiveRepository(
         db.epg().deleteState(sourceId)
         favouriteDao.removeAllOf(sourceId)
         hiddenDao.removeAllOf(sourceId)
+        db.renames().removeGroupsOf(sourceId)
+        db.renames().removeVodCategoriesOf(sourceId)
         db.vod().run {
             deleteAllCategories(sourceId)
             deleteAllMovies(sourceId)

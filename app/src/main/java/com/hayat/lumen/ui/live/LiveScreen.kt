@@ -122,7 +122,7 @@ fun LiveScreen(onPlay: (channelId: Long) -> Unit, onOpenGuide: () -> Unit, onMan
                             .onFocusChanged { if (it.isFocused) vm.select(group) },
                     ) {
                         Text(
-                            group.name,
+                            group.label,
                             style = MaterialTheme.typography.titleMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -140,7 +140,7 @@ fun LiveScreen(onPlay: (channelId: Long) -> Unit, onOpenGuide: () -> Unit, onMan
         Column(Modifier.weight(1f).fillMaxHeight()) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    selected?.name.orEmpty(),
+                    groups.firstOrNull { it.sourceId == selected?.sourceId && it.name == selected?.name }?.label.orEmpty(),
                     style = MaterialTheme.typography.headlineSmall,
                     color = LumenColors.TextPrimary,
                     maxLines = 1,

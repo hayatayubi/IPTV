@@ -114,7 +114,7 @@ class GuideViewModel(private val repo: LiveRepository, private val epg: EpgRepos
     }
 
     private fun GroupRow.toOption(multipleSources: Boolean) =
-        GuideOption(GuideList.Group(GroupKey(sourceId, name)), name, sourceName.takeIf { multipleSources })
+        GuideOption(GuideList.Group(GroupKey(sourceId, name)), label, sourceName.takeIf { multipleSources })
 
     private companion object {
         const val BLOCK = 20

@@ -12,6 +12,8 @@ import com.hayat.lumen.data.db.SourceEntity
 import com.hayat.lumen.data.db.SourceType
 import com.hayat.lumen.data.db.VodCategoryEntity
 import com.hayat.lumen.data.db.VodCategoryRow
+import com.hayat.lumen.data.db.VodCategorySetting
+import com.hayat.lumen.data.db.RenamedVodCategoryEntity
 import com.hayat.lumen.data.db.VodKind
 import com.hayat.lumen.data.db.WatchProgressEntity
 import com.hayat.lumen.data.xtream.XtreamCategory
@@ -206,6 +208,20 @@ class VodRepository(
 
     suspend fun hideCategory(row: VodCategoryRow) = user.hideCategory(HiddenVodCategoryEntity(row.sourceId, row.kind, row.categoryId))
     suspend fun showAllCategories(kind: VodKind) = user.showAllCategories(kind)
+
+    /** Every category of [kind] with its hidden flag and name, for Settings. */
+    fun categorySettings(kind: VodKind): Flow<List<VodCategorySetting>> = dao.observeCategorySettings(kind)
+
+    suspend fun setCategoryHidden(c: VodCategorySetting, hidden: Boolean) =
+        if (hidden) user.hideCategory(HiddenVodCategoryEntity(c.sourceId, c.kind, c.categoryId))
+        else user.showCategory(c.sourceId, c.kind, c.categoryId)
+
+    /** A blank [label], or the provider's own name, puts the provider's name back. */
+    suspend fun renameCategory(c: VodCategorySetting, label: String) {
+        val clean = label.trim()
+        if (clean.isEmpty() || clean == c.providerName) db.renames().resetVodCategory(c.sourceId, c.kind, c.categoryId)
+        else db.renames().renameVodCategory(RenamedVodCategoryEntity(c.sourceId, c.kind, c.categoryId, clean))
+    }
 
     // Importing.
 

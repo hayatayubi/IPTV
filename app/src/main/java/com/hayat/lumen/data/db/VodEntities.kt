@@ -114,6 +114,26 @@ data class HiddenVodCategoryEntity(
     val categoryId: String,
 )
 
+/** A movie or series category the user renamed. Category ids survive refreshes. */
+@Entity(tableName = "renamed_vod_categories", primaryKeys = ["sourceId", "kind", "categoryId"])
+data class RenamedVodCategoryEntity(
+    val sourceId: Long,
+    val kind: VodKind,
+    val categoryId: String,
+    val label: String,
+)
+
+/** A category in Settings: shown or hidden, with the provider's name next to the user's. */
+data class VodCategorySetting(
+    val sourceId: Long,
+    val kind: VodKind,
+    val categoryId: String,
+    val providerName: String,
+    val name: String,
+    val itemCount: Int,
+    val hidden: Boolean,
+)
+
 /** A row on the Movies/Series tab. [generation] keys the row's one-shot poster query. */
 data class VodCategoryRow(
     val sourceId: Long,

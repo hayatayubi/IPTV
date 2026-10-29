@@ -25,7 +25,7 @@ interface VodDao {
     /** The rows of the Movies or Series tab, in the provider's order. Hidden categories are left out. */
     @Query(
         """
-        SELECT c.sourceId, c.generation, c.kind, c.categoryId, c.name, c.itemCount
+        SELECT c.sourceId, c.generation, c.kind, c.categoryId, COALESCE((SELECT r.label FROM renamed_vod_categories r WHERE r.sourceId = c.sourceId AND r.kind = c.kind AND r.categoryId = c.categoryId), c.name) AS name, c.itemCount
         FROM vod_categories c JOIN sources s ON s.id = c.sourceId AND s.vodGeneration = c.generation
         WHERE s.hidden = 0 AND c.kind = :kind
             AND NOT EXISTS(
@@ -36,6 +36,21 @@ interface VodDao {
         """,
     )
     fun observeCategories(kind: VodKind): Flow<List<VodCategoryRow>>
+
+    /** Every category of [kind], hidden or not, for Settings. */
+    @Query(
+        """
+        SELECT c.sourceId, c.kind, c.categoryId, c.name AS providerName, COALESCE((SELECT r.label FROM renamed_vod_categories r WHERE r.sourceId = c.sourceId AND r.kind = c.kind AND r.categoryId = c.categoryId), c.name) AS name, c.itemCount,
+            EXISTS(
+                SELECT 1 FROM hidden_vod_categories h
+                WHERE h.sourceId = c.sourceId AND h.kind = c.kind AND h.categoryId = c.categoryId
+            ) AS hidden
+        FROM vod_categories c JOIN sources s ON s.id = c.sourceId AND s.vodGeneration = c.generation
+        WHERE s.hidden = 0 AND c.kind = :kind
+        ORDER BY c.sourceId, c.playlistOrder
+        """,
+    )
+    fun observeCategorySettings(kind: VodKind): Flow<List<VodCategorySetting>>
 
     @Query(
         """
@@ -243,4 +258,7 @@ interface VodUserDao {
         """,
     )
     suspend fun showAllCategories(kind: VodKind)
+
+    @Query("DELETE FROM hidden_vod_categories WHERE sourceId = :sourceId AND kind = :kind AND categoryId = :categoryId")
+    suspend fun showCategory(sourceId: Long, kind: VodKind, categoryId: String)
 }
