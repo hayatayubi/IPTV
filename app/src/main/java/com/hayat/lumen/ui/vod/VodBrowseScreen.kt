@@ -32,6 +32,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.foundation.focusGroup
+import androidx.compose.runtime.MutableIntState
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
@@ -99,13 +106,13 @@ fun VodBrowseScreen(
     }
 
     @Composable
-    fun Card(rowKey: String, poster: Poster, isFirst: Boolean, onLongClick: () -> Unit) {
+    fun Card(rowKey: String, poster: Poster, isFirst: Boolean, rowFocus: Modifier, onLongClick: () -> Unit) {
         val key = "$rowKey|${poster.key}"
         PosterCard(
             poster = poster,
             onClick = { onOpen(poster) },
             onLongClick = onLongClick,
-            modifier = Modifier
+            modifier = rowFocus
                 .then(if (key == lastFocus) Modifier.focusRequester(restore) else Modifier)
                 .then(if (isFirst) Modifier.focusRequester(first) else Modifier)
                 .onFocusChanged {
@@ -182,18 +189,18 @@ fun VodBrowseScreen(
                         }
                         if (continueWatching.isNotEmpty()) {
                             item(key = "continue") {
-                                PosterRow("Continue watching", "Hold OK to remove") {
+                                PosterRow("Continue watching", "Hold OK to remove") { focus ->
                                     itemsIndexed(continueWatching, key = { _, p -> p.key }) { i, p ->
-                                        Card("continue", p, isFirst = i == 0) { vm.removeFromContinue(p) }
+                                        Card("continue", p, isFirst = i == 0, focus.item(i)) { vm.removeFromContinue(p) }
                                     }
                                 }
                             }
                         }
                         if (myList.isNotEmpty()) {
                             item(key = "mylist") {
-                                PosterRow("My List", null) {
+                                PosterRow("My List", null) { focus ->
                                     itemsIndexed(myList, key = { _, p -> p.key }) { i, p ->
-                                        Card("mylist", p, isFirst = i == 0 && continueWatching.isEmpty()) { toggleMyList(p) }
+                                        Card("mylist", p, isFirst = i == 0 && continueWatching.isEmpty(), focus.item(i)) { toggleMyList(p) }
                                     }
                                 }
                             }
@@ -205,11 +212,13 @@ fun VodBrowseScreen(
                                 value = vm.posters(row, fillsHero = rowIndex == 0)
                             }
                             val name = remember(row.name) { CategoryNames.display(row.name) }
-                            PosterRow(name.title, (name.tags + formatCount(row.itemCount)).joinToString("  ·  ")) {
+                            PosterRow(name.title, (name.tags + formatCount(row.itemCount)).joinToString("  ·  ")) { focus ->
                                 itemsIndexed(posters, key = { _, p -> p.key }) { i, p ->
-                                    Card(rowKey, p, isFirst = categoriesFirst && rowIndex == 0 && i == 0) { toggleMyList(p) }
+                                    Card(rowKey, p, isFirst = categoriesFirst && rowIndex == 0 && i == 0, focus.item(i)) { toggleMyList(p) }
                                 }
-                                if (posters.isNotEmpty()) item(key = "all") { SeeAllCard(row.itemCount, onClick = { onSeeAll(row) }) }
+                                if (posters.isNotEmpty()) item(key = "all") {
+                                    SeeAllCard(row.itemCount, onClick = { onSeeAll(row) }, modifier = focus.item(posters.size))
+                                }
                             }
                         }
                         if (hiddenCount > 0) {
@@ -245,13 +254,32 @@ fun VodBrowseScreen(
     }
 }
 
-/** A titled row of posters. focusRestorer: coming back to the row lands on the poster you left. */
+/**
+ * Where focus lands when it enters a poster row: Down = the row's first poster (the row scrolls back
+ * to the start), Up = the poster you were last on in that row. Each poster takes [item] (its index).
+ */
+private class RowFocus(private val last: MutableIntState) {
+    val first = FocusRequester()
+    val remembered = FocusRequester()
+
+    fun item(index: Int): Modifier = Modifier
+        .then(if (index == 0) Modifier.focusRequester(first) else Modifier)
+        .then(if (index == last.intValue) Modifier.focusRequester(remembered) else Modifier)
+        .onFocusChanged { if (it.isFocused) last.intValue = index }
+}
+
+/** A titled row of posters, see [RowFocus]. */
 @Composable
 private fun PosterRow(
     title: String,
     detail: String?,
-    content: LazyListScope.() -> Unit,
+    content: LazyListScope.(RowFocus) -> Unit,
 ) {
+    // rememberSaveable: the LazyColumn keeps this while the row is scrolled off screen.
+    val last = rememberSaveable { mutableIntStateOf(0) }
+    val focus = remember { RowFocus(last) }
+    val rowState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
     Column {
         Row(verticalAlignment = Alignment.Bottom) {
             Text(title, style = MaterialTheme.typography.titleMedium, color = LumenColors.TextPrimary, maxLines = 1)
@@ -261,12 +289,41 @@ private fun PosterRow(
             }
         }
         LazyRow(
-            modifier = Modifier.fillMaxWidth().focusRestorer(),
+            state = rowState,
+            modifier = Modifier
+                .fillMaxWidth()
+                // Unlike SwiftUI, Compose lets a container redirect focus as it comes in: onEnter runs
+                // before any child is focused, and requestFocus() there picks the child instead.
+                .focusProperties {
+                    onEnter = {
+                        val target = when (requestedFocusDirection) {
+                            FocusDirection.Down -> 0
+                            FocusDirection.Up -> last.intValue
+                            else -> -1
+                        }
+                        if (target >= 0) {
+                            val requester = if (target == 0) focus.first else focus.remembered
+                            val ready = if (target == 0) rowState.firstVisibleItemIndex == 0
+                            else rowState.layoutInfo.visibleItemsInfo.any { it.index == target }
+                            if (ready) {
+                                requester.requestFocus()
+                            } else {
+                                // The poster isn't laid out yet: scroll to it, then focus it.
+                                cancelFocusChange()
+                                scope.launch {
+                                    rowState.scrollToItem(target)
+                                    withFrameNanos { }
+                                    runCatching { requester.requestFocus() }
+                                }
+                            }
+                        }
+                    }
+                }
+                .focusGroup(),
             // Room for the focused card's lift and shadow.
             contentPadding = PaddingValues(vertical = 14.dp, horizontal = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(18.dp),
-            content = content,
-        )
+        ) { content(focus) }
     }
 }
 
