@@ -66,6 +66,7 @@ import com.hayat.lumen.ui.components.LumenButton
 import com.hayat.lumen.ui.components.QualityTag
 import com.hayat.lumen.util.CategoryNames
 import com.hayat.lumen.ui.components.PosterCard
+import com.hayat.lumen.ui.components.ContinueCard
 import com.hayat.lumen.ui.components.SeeAllCard
 import com.hayat.lumen.ui.components.Tab
 import com.hayat.lumen.ui.components.TopTabs
@@ -93,7 +94,6 @@ fun VodBrowseScreen(
     val vm = viewModel(key = kind.name) { VodBrowseViewModel(container.vod, kind) }
     val categories by vm.categories.collectAsStateWithLifecycle()
     val continueWatching by vm.continueWatching.collectAsStateWithLifecycle()
-    val myList by vm.myList.collectAsStateWithLifecycle()
     val hiddenCount by vm.hiddenCount.collectAsStateWithLifecycle()
     val sync by vm.sync.collectAsStateWithLifecycle()
     val hero by vm.hero.collectAsStateWithLifecycle()
@@ -115,13 +115,9 @@ fun VodBrowseScreen(
     }
 
     @Composable
-    fun Card(rowKey: String, poster: Poster, isFirst: Boolean, rowFocus: Modifier, onLongClick: () -> Unit) {
+    fun Card(rowKey: String, poster: Poster, isFirst: Boolean, rowFocus: Modifier, wide: Boolean = false, onLongClick: () -> Unit) {
         val key = "$rowKey|${poster.key}"
-        PosterCard(
-            poster = poster,
-            onClick = { onOpen(poster) },
-            onLongClick = onLongClick,
-            modifier = rowFocus
+        val modifier = rowFocus
                 .then(if (key == lastFocus) Modifier.focusRequester(restore) else Modifier)
                 .then(if (isFirst) Modifier.focusRequester(first) else Modifier)
                 .onFocusChanged {
@@ -129,8 +125,14 @@ fun VodBrowseScreen(
                         lastFocus = key
                         vm.focus(poster)
                     }
-                },
-        )
+                }
+        if (wide) {
+            // The backdrop comes from the stored series row, or get_vod_info for a film (cached).
+            val backdrop by produceState<String?>(null, poster.key) { value = vm.backdrop(poster) }
+            ContinueCard(poster, backdrop, onClick = { onOpen(poster) }, onLongClick = onLongClick, modifier = modifier)
+        } else {
+            PosterCard(poster = poster, onClick = { onOpen(poster) }, onLongClick = onLongClick, modifier = modifier)
+        }
     }
 
     Ambient {
@@ -153,7 +155,7 @@ fun VodBrowseScreen(
             val rows = categories
             when {
                 rows == null -> Spacer(Modifier.weight(1f))
-                rows.isEmpty() && continueWatching.isEmpty() && myList.isEmpty() -> {
+                rows.isEmpty() && continueWatching.isEmpty() -> {
                     Spacer(Modifier.height(96.dp))
                     Text(
                         if (sync is VodSync.Running) "Loading $noun…" else "No $noun yet",
@@ -181,7 +183,6 @@ fun VodBrowseScreen(
                     val keys = buildList {
                         if (rows.size > 1) add("chips")
                         if (continueWatching.isNotEmpty()) add("continue")
-                        if (myList.isNotEmpty()) add("mylist")
                         rows.forEach { add("${it.sourceId}/${it.categoryId}") }
                         if (hiddenCount > 0) add("hidden")
                     }
@@ -230,21 +231,12 @@ fun VodBrowseScreen(
                             item(key = "continue") { RowItem("continue") {
                                 PosterRow("Continue watching", "Hold OK to remove") { focus ->
                                     itemsIndexed(continueWatching, key = { _, p -> p.key }) { i, p ->
-                                        Card("continue", p, isFirst = i == 0, focus.item(i)) { vm.removeFromContinue(p) }
+                                        Card("continue", p, isFirst = i == 0, focus.item(i), wide = true) { vm.removeFromContinue(p) }
                                     }
                                 }
                             } }
                         }
-                        if (myList.isNotEmpty()) {
-                            item(key = "mylist") { RowItem("mylist") {
-                                PosterRow("My List", null) { focus ->
-                                    itemsIndexed(myList, key = { _, p -> p.key }) { i, p ->
-                                        Card("mylist", p, isFirst = i == 0 && continueWatching.isEmpty(), focus.item(i)) { toggleMyList(p) }
-                                    }
-                                }
-                            } }
-                        }
-                        val categoriesFirst = continueWatching.isEmpty() && myList.isEmpty()
+                        val categoriesFirst = continueWatching.isEmpty()
                         itemsIndexed(rows, key = { _, r -> "${r.sourceId}/${r.categoryId}" }) { rowIndex, row ->
                             val rowKey = "${row.sourceId}/${row.categoryId}"
                             val posters by produceState<List<Poster>>(emptyList(), row.sourceId, row.categoryId, row.generation) {
@@ -310,10 +302,11 @@ private class RowFocus(private val last: MutableIntState) {
         .onFocusChanged { if (it.isFocused) last.intValue = index }
 }
 
-private const val PeekPx = 4
+internal const val PeekPx = 4
 
 /** For the list of rows: never scroll by itself to show a focused card (RowItem scrolls whole rows instead). */
-private object NoAutoScroll : BringIntoViewSpec {
+@OptIn(ExperimentalFoundationApi::class)
+internal object NoAutoScroll : BringIntoViewSpec {
     override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float) = 0f
 }
 

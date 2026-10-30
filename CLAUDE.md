@@ -23,10 +23,13 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
   - Hold OK on a category in Live to hide it. Live → **Categories** lists every category with a tick (OK toggles),
     a search, and Show all / Hide all (acting on just the search matches). OK on a playlist row hides the whole playlist.
 - **Movies and series (VOD).** Merged into main (PR #10), checked on the TV 2026-10-28.
-  - Home's top bar: Live TV · Movies · Series. Each VOD tab: hero (backdrop, title, year, genre, plot) over poster rows:
-    Continue watching (that tab only, not Home), My List, then the provider's categories (30 posters + "See all").
+  - Home's top bar: Live TV · Movies · Series · My List. Each VOD tab: hero (backdrop, title, year, genre, plot) over rows:
+    Continue watching (that tab only, not Home; wide 16:9 `ContinueCard`s with episode, time left and progress, 0.8.0),
+    then the provider's categories (30 posters + "See all").
+    **My List tab** (`ui/vod/MyListScreen.kt`, 0.8.0): films and series together, newest first (`observeMyListAll`), All /
+    Films / Series pills (OK picks), a 6-column grid; hold OK removes. Replaced the My List rows on Movies/Series.
     Down into a poster row lands on its first poster; Up returns to the poster you left in that row (`RowFocus`, 0.7.1); the focused row always scrolls fully to the top of the list (`RowItem`, 0.7.2: the default nudge cropped the enlarged poster).
-    Hold OK on a poster = My List; in Continue watching = remove. "See all" has Hide category; hidden ones come back at the
+    Hold OK on a poster = add to / remove from My List; in Continue watching = remove. "See all" has Hide category; hidden ones come back at the
     bottom of the tab. Search (films + series) from the tab. Film page: Play / Resume from 42:10 / Start over / My List.
     Series page: Resume S1 · E3, seasons, episodes with progress. Player: OK pause, Left/Right 10 s (quick taps grow to 30 s, 1 min; holding ramps from 1 min/s to 20 min/s
     by hold time, see `SeekRamp`; "+12:30" shows while seeking),
