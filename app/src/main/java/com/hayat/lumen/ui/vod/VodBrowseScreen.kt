@@ -35,6 +35,11 @@ import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableIntState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.rememberCoroutineScope
@@ -75,6 +80,7 @@ import com.hayat.lumen.ui.theme.SafeArea
  * and My List come first, then the provider's categories. Hold OK on a poster to add it to
  * My List (or, in Continue watching, to remove it from there).
  */
+@OptIn(ExperimentalFoundationApi::class) // LocalBringIntoViewSpec
 @Composable
 fun VodBrowseScreen(
     kind: VodKind,
@@ -100,6 +106,9 @@ fun VodBrowseScreen(
     val first = remember { FocusRequester() }
     val tabsFocus = remember { FocusRequester() }
     val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    // The rows' own (horizontal) scrolling keeps the default; see RowItem.
+    val rowSpec = LocalBringIntoViewSpec.current
 
     fun toggleMyList(poster: Poster) = vm.toggleMyList(poster) { added ->
         Toast.makeText(context, if (added) "Added to My List" else "Removed from My List", Toast.LENGTH_SHORT).show()
@@ -168,6 +177,36 @@ fun VodBrowseScreen(
                 }
                 else -> {
                     HeroText(hero, Modifier.weight(1f).fillMaxWidth().padding(bottom = 8.dp), plotLines = 2)
+                    // The list's items in order, so a focused row can scroll itself to the top.
+                    val keys = buildList {
+                        if (rows.size > 1) add("chips")
+                        if (continueWatching.isNotEmpty()) add("continue")
+                        if (myList.isNotEmpty()) add("mylist")
+                        rows.forEach { add("${it.sourceId}/${it.categoryId}") }
+                        if (hiddenCount > 0) add("hidden")
+                    }
+
+                    /**
+                     * One item of the list. When something in it takes focus, the whole item scrolls to the
+                     * top of the list, title and all. Compose's default only scrolls until the focused card
+                     * itself fits, which cut off the row's title and the top of the enlarged focused poster.
+                     */
+                    @Composable
+                    fun RowItem(key: String, content: @Composable () -> Unit) {
+                        CompositionLocalProvider(LocalBringIntoViewSpec provides rowSpec) {
+                            Box(Modifier.onFocusChanged { state ->
+                                if (state.hasFocus) {
+                                    val index = keys.indexOf(key)
+                                    // A few pixels of the row above stay in the list (in its transparent bottom padding,
+                                    // so nothing shows): only rows in the list can take focus, so Up still finds it.
+                                    if (index >= 0) scope.launch { listState.animateScrollToItem(index, if (index > 0) -PeekPx else 0) }
+                                }
+                            }) { content() }
+                        }
+                    }
+
+                    // CompositionLocalProvider is like SwiftUI's .environment(): it applies to everything inside.
+                    CompositionLocalProvider(LocalBringIntoViewSpec provides NoAutoScroll) {
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxWidth().height(RowsHeight),
@@ -175,7 +214,7 @@ fun VodBrowseScreen(
                     ) {
                         // Every category as a small pill, a quick way to "See all" of one.
                         if (rows.size > 1) {
-                            item(key = "chips") {
+                            item(key = "chips") { RowItem("chips") {
                                 LazyRow(
                                     modifier = Modifier.fillMaxWidth().focusRestorer(),
                                     contentPadding = PaddingValues(vertical = 12.dp, horizontal = 4.dp),
@@ -185,25 +224,25 @@ fun VodBrowseScreen(
                                         CategoryChip(row.name, row.itemCount, onClick = { onSeeAll(row) })
                                     }
                                 }
-                            }
+                            } }
                         }
                         if (continueWatching.isNotEmpty()) {
-                            item(key = "continue") {
+                            item(key = "continue") { RowItem("continue") {
                                 PosterRow("Continue watching", "Hold OK to remove") { focus ->
                                     itemsIndexed(continueWatching, key = { _, p -> p.key }) { i, p ->
                                         Card("continue", p, isFirst = i == 0, focus.item(i)) { vm.removeFromContinue(p) }
                                     }
                                 }
-                            }
+                            } }
                         }
                         if (myList.isNotEmpty()) {
-                            item(key = "mylist") {
+                            item(key = "mylist") { RowItem("mylist") {
                                 PosterRow("My List", null) { focus ->
                                     itemsIndexed(myList, key = { _, p -> p.key }) { i, p ->
                                         Card("mylist", p, isFirst = i == 0 && continueWatching.isEmpty(), focus.item(i)) { toggleMyList(p) }
                                     }
                                 }
-                            }
+                            } }
                         }
                         val categoriesFirst = continueWatching.isEmpty() && myList.isEmpty()
                         itemsIndexed(rows, key = { _, r -> "${r.sourceId}/${r.categoryId}" }) { rowIndex, row ->
@@ -212,6 +251,7 @@ fun VodBrowseScreen(
                                 value = vm.posters(row, fillsHero = rowIndex == 0)
                             }
                             val name = remember(row.name) { CategoryNames.display(row.name) }
+                            RowItem(rowKey) {
                             PosterRow(name.title, (name.tags + formatCount(row.itemCount)).joinToString("  ·  ")) { focus ->
                                 itemsIndexed(posters, key = { _, p -> p.key }) { i, p ->
                                     Card(rowKey, p, isFirst = categoriesFirst && rowIndex == 0 && i == 0, focus.item(i)) { toggleMyList(p) }
@@ -220,17 +260,19 @@ fun VodBrowseScreen(
                                     SeeAllCard(row.itemCount, onClick = { onSeeAll(row) }, modifier = focus.item(posters.size))
                                 }
                             }
+                            }
                         }
                         if (hiddenCount > 0) {
-                            item(key = "hidden") {
+                            item(key = "hidden") { RowItem("hidden") {
                                 Row(Modifier.padding(vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                                     LumenButton(
                                         text = if (hiddenCount == 1) "Show 1 hidden category" else "Show $hiddenCount hidden categories",
                                         onClick = vm::showHidden,
                                     )
                                 }
-                            }
+                            } }
                         }
+                    }
                     }
                 }
             }
@@ -266,6 +308,13 @@ private class RowFocus(private val last: MutableIntState) {
         .then(if (index == 0) Modifier.focusRequester(first) else Modifier)
         .then(if (index == last.intValue) Modifier.focusRequester(remembered) else Modifier)
         .onFocusChanged { if (it.isFocused) last.intValue = index }
+}
+
+private const val PeekPx = 4
+
+/** For the list of rows: never scroll by itself to show a focused card (RowItem scrolls whole rows instead). */
+private object NoAutoScroll : BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float) = 0f
 }
 
 /** A titled row of posters, see [RowFocus]. */

@@ -25,7 +25,7 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
 - **Movies and series (VOD).** Merged into main (PR #10), checked on the TV 2026-10-28.
   - Home's top bar: Live TV · Movies · Series. Each VOD tab: hero (backdrop, title, year, genre, plot) over poster rows:
     Continue watching (that tab only, not Home), My List, then the provider's categories (30 posters + "See all").
-    Down into a poster row lands on its first poster; Up returns to the poster you left in that row (`RowFocus`, 0.7.1).
+    Down into a poster row lands on its first poster; Up returns to the poster you left in that row (`RowFocus`, 0.7.1); the focused row always scrolls fully to the top of the list (`RowItem`, 0.7.2: the default nudge cropped the enlarged poster).
     Hold OK on a poster = My List; in Continue watching = remove. "See all" has Hide category; hidden ones come back at the
     bottom of the tab. Search (films + series) from the tab. Film page: Play / Resume from 42:10 / Start over / My List.
     Series page: Resume S1 · E3, seasons, episodes with progress. Player: OK pause, Left/Right 10 s (quick taps grow to 30 s, 1 min; holding ramps from 1 min/s to 20 min/s
