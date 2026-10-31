@@ -80,8 +80,9 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
     `Guide` (`nowNext`, `between`, `schedule`; epoch seconds). `.gz` guide files aren't read on iOS yet. Loaded at launch
     after the channels. Home hero now/next + tile progress, row "now" lines, player line. `GuideView`
     (Home → TV guide): a horizontal ScrollView holding the ruler + a vertical one (one direction per drag: Hayat found a
-    free 2-axis pan felt like an overlay), opens on the current half hour; channel column follows
-    `onScrollGeometryChange` (unclamped, so it stays put during bounce); tap = select (iPhone details card in a bottom
+    free 2-axis pan felt like an overlay), opens on the current half hour; channel column pinned with
+    `visualEffect` (render-time offset from its frame in `.scrollView(axis: .horizontal)`; a @State offset lagged a frame
+    and let programmes slide over the tiles); tap = select (iPhone details card in a bottom
     `safeAreaInset`, above the tab bar / iPad panel with muted preview), double-tap = watch. No guide in the player.
   - Saved on the phone (not yet run): shared `LibraryCache` writes channels/guide/VOD as JSON to Caches/Lumen/<id>-live|guide|vod.json;
     launch shows them at once, then refreshes quietly (live + guide after 12 h, VOD after 24 h); failures keep old data.

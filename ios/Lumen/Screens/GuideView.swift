@@ -251,7 +251,7 @@ struct GuideView: View {
             startPoint: .leading, endPoint: .trailing
         )
         .frame(width: width, height: height)
-        .offset(x: scrollX)
+        .pinnedToLeadingEdge()
         .allowsHitTesting(false)
     }
 
@@ -297,7 +297,8 @@ struct GuideView: View {
             }
             .buttonStyle(TileButtonStyle())
             .padding(.top, 6)
-            .offset(x: (wide ? 48 : 20) + scrollX)
+            .padding(.leading, wide ? 48 : 20)
+            .pinnedToLeadingEdge()
             .accessibilityLabel("Watch \(channel.title)")
         }
         .frame(width: leading + totalWidth, height: rowHeight, alignment: .topLeading)
@@ -344,8 +345,12 @@ struct GuideView: View {
             Rectangle().fill(.white.opacity(0.85)).frame(width: 2)
         }
         .frame(width: 9)
-        .offset(x: x - 4.5, y: 20)
-        .opacity(x - scrollX < leading ? 0 : 1)
+        // Before the padding, so `geo` is the line itself: hidden once it reaches the channel column.
+        .visualEffect { content, geo in
+            content.opacity(geo.frame(in: .scrollView(axis: .horizontal)).minX < leading - 4 ? 0 : 1)
+        }
+        .padding(.leading, max(0, x - 4.5))
+        .padding(.top, 20)
         .allowsHitTesting(false)
     }
 
@@ -518,5 +523,17 @@ private struct DetailsCard: View {
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .background(Color(hex: 0x1E2028).opacity(0.75), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Color.white.opacity(0.12), lineWidth: 1))
+    }
+}
+
+private extension View {
+    /// Keeps a view at the left edge of the visible grid while the programmes scroll sideways
+    /// under it, bounce included. Done in `visualEffect`, which runs as each frame is drawn: an
+    /// offset from the scroll position in @State arrives a frame late, so the programmes slid
+    /// over the channel tiles while dragging (Hayat 2026-10-31).
+    func pinnedToLeadingEdge() -> some View {
+        visualEffect { content, geo in
+            content.offset(x: -geo.frame(in: .scrollView(axis: .horizontal)).minX)
+        }
     }
 }
