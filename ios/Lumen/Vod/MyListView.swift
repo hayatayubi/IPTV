@@ -78,6 +78,7 @@ struct MyListView: View {
                         .frame(maxWidth: .infinity)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .lumenGutter(wide)
             .padding(.top, wide ? 24 : 8)
             .padding(.bottom, 24)

@@ -54,6 +54,9 @@ struct HomeView: View {
                         noFavourites
                     }
                 }
+                // Full width even when the content is narrow (the empty state): the ScrollView
+                // took its content's width, which left black bars on the iPad.
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .lumenGutter(wide)
                 .padding(.bottom, 24)
             }

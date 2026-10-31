@@ -18,25 +18,32 @@ struct RootView: View {
     private var wide: Bool { UIDevice.current.userInterfaceIdiom == .pad && sizeClass == .regular }
 
     var body: some View {
-        ZStack {
-            AmbientBackground()
-            ForEach(AppTab.allCases) { item in
-                if opened.contains(item) {
-                    screen(for: item)
-                        .opacity(tab == item ? 1 : 0)
-                        .allowsHitTesting(tab == item)
-                        .accessibilityHidden(tab != item)
-                        // Only the open tab may hide the bar.
-                        .transformPreference(TabBarHiddenKey.self) { if tab != item { $0 = false } }
-                }
-            }
-        }
-        // safeAreaInset makes room for the bar: scroll views inside every tab end above it.
-        .onPreferenceChange(TabBarHiddenKey.self) { barHidden = $0 }
-        .safeAreaInset(edge: wide ? .top : .bottom, spacing: 0) {
+        // iPad: the pill sits above the tabs in a VStack, so pages start below it. (As a top
+        // safeAreaInset, the pages' NavigationStacks with hidden bars ignored it and slid their
+        // first rows under the pill: Hayat's iPad screenshots 2026-10-31.)
+        VStack(spacing: 0) {
             if wide {
                 TopTabBar(tab: tab, select: select, search: { searching = true })
-            } else if !barHidden {
+            }
+            ZStack {
+                ForEach(AppTab.allCases) { item in
+                    if opened.contains(item) {
+                        screen(for: item)
+                            .opacity(tab == item ? 1 : 0)
+                            .allowsHitTesting(tab == item)
+                            .accessibilityHidden(tab != item)
+                            // Only the open tab may hide the bar.
+                            .transformPreference(TabBarHiddenKey.self) { if tab != item { $0 = false } }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .background(AmbientBackground())
+        .onPreferenceChange(TabBarHiddenKey.self) { barHidden = $0 }
+        // iPhone: the floating bar; safeAreaInset makes scroll views inside every tab end above it.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if !wide, !barHidden {
                 BottomTabBar(tab: tab, select: select, search: { searching = true })
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
