@@ -74,7 +74,13 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
     cards, poster rows (no hero: Hayat 2026-10-31, nothing drives it without focus; film/series pages keep backdrops).
     Search = round glass button beside the iPhone bar. iOS 26's top scroll edge effect is off (`hideTopScrollEdgeEffect`). My List tab (`MyListView`,
     `PlaylistStore.myList` in UserDefaults, All / Films / Series). `SearchView` = channels + films + series.
-    Ratings as plain text (provider rating, age rating). No guide yet, so no now/next or TV guide button.
+    Ratings as plain text (provider rating, age rating).
+  - TV guide (not yet run): shared `PlaylistLoader.loadXtreamGuide/loadGuide` stream XMLTV through `XmltvReader`
+    (hand-rolled, common Kotlin; tested in `GuideTest`), keeping now − 2 h … now + 36 h for the playlist's tvg-ids, into
+    `Guide` (`nowNext`, `between`, `schedule`; epoch seconds). `.gz` guide files aren't read on iOS yet. Loaded at launch
+    after the channels, in memory only. Home hero now/next + tile progress, row "now" lines, player line. `GuideView`
+    (Home → TV guide): 2-axis ScrollView, pinned ruler, channel column follows `onScrollGeometryChange`; tap = select
+    (iPhone details card / iPad panel with muted preview), double-tap = watch. No guide in the player (Hayat 2026-10-31).
   - Not in Phase 1: Left sidebar and Right mini guide in the player (Phases 3/6), logos (Phase 4), settings/source editing (Phase 6).
 
 ## Decisions
