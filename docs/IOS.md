@@ -24,6 +24,19 @@ No $99 needed for now. What the free team means:
   (your data in the app stays).
 - At most 3 of your own apps on a device at a time.
 
+### With the paid developer account ($99, Hayat has one since 2026-10-31)
+
+- Installs no longer expire after 7 days (a year instead), and iCloud works: favourites, My List,
+  where you stopped, hidden/renamed categories and the playlists themselves sync between your
+  iPhone and iPad (logins through iCloud Keychain).
+- Switch the project to the paid team once: find the **Team ID** at developer.apple.com →
+  Account → Membership details, then put it in `ios/Config/Local.xcconfig`:
+  `DEVELOPMENT_TEAM = ABCDE12345` (your own id), and run `./generate.sh` again.
+  In Xcode, Signing & Capabilities should now show your name **without** "(Personal Team)" and an
+  **iCloud** capability (key-value storage). Xcode registers it with Apple by itself.
+- Both devices must be signed in to the same Apple Account with iCloud on (Settings → your name
+  → iCloud). Changes arrive within seconds to a few minutes.
+
 ## 3. Get the project and open it
 
 ```sh

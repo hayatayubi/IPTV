@@ -1,8 +1,10 @@
 import Foundation
 import Security
 
-/// Logins and playlist links live in the iOS Keychain (encrypted, never in backups of other
-/// devices), not in the app's files. One item per playlist, keyed by its id.
+/// Logins and playlist links live in the iOS Keychain (encrypted), not in the app's files. One
+/// item per playlist, keyed by its id. They sync through iCloud Keychain (end-to-end encrypted,
+/// only the user's own devices can read them), so a playlist added on the iPhone also works on
+/// the iPad. Items saved before sync are found too (`SynchronizableAny`) and moved up on save.
 enum Keychain {
     private static let service = "com.hayat.lumen.playlist"
 
@@ -12,11 +14,15 @@ enum Keychain {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
-        SecItemDelete(query as CFDictionary)
+        var any = query
+        any[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
+        SecItemDelete(any as CFDictionary)
         var item = query
         item[kSecValueData as String] = data
-        // Readable after the first unlock since the device started, and only on this device.
-        item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        item[kSecAttrSynchronizable as String] = kCFBooleanTrue
+        // Readable after the first unlock since the device started. (Not "ThisDeviceOnly":
+        // those can't sync.)
+        item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
         SecItemAdd(item as CFDictionary, nil)
     }
 
@@ -25,6 +31,7 @@ enum Keychain {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
+            kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
@@ -38,6 +45,7 @@ enum Keychain {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
+            kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
         ]
         SecItemDelete(query as CFDictionary)
     }

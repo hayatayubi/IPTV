@@ -94,6 +94,10 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
   - Player extras (not yet run): VOD remembers the audio/subtitle track name (`preferredAudioTrack`/`preferredSubtitleTrack`,
     matched on name then language word). Live TV: Picture in Picture (`Player/PictureInPicture.swift`, button + automatic
     on leaving the app); not for films (VLCKit has none).
+  - iCloud sync (not yet run; Hayat bought the paid account 2026-10-31): `Data/CloudSync.swift` mirrors the UserDefaults
+    JSON keys (playlists, favourites, watchProgress (merged, newest per item wins), myList, hiddenCategories,
+    categoryLabels) to `NSUbiquitousKeyValueStore` (entitlement in project.yml); logins + OMDb key are synchronizable
+    Keychain items (iCloud Keychain). A playlist arriving from the other device loads via `loadAll()`.
   - App icon: AB2 (Hayat 2026-10-31): soft out-of-focus blue/warm lights + glowing white L with a soft blue-white dot.
   - Not in Phase 1: Left sidebar and Right mini guide in the player (Phases 3/6), logos (Phase 4), settings/source editing (Phase 6).
 
@@ -213,8 +217,8 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
   Xcode runs `ios/build-shared.sh` → `:shared:embedAndSignAppleFrameworkForXcode` (finds Homebrew Java/Android SDK).
   Cloud sessions can compile the iOS klibs (`:shared:compileKotlinIosArm64`) but can't link the framework or build Swift.
 - **iOS** (`ios/`): SwiftUI, iOS 18+, iPhone + iPad, bundle id `com.hayat.lumen`. Built on Hayat's Mac with Xcode
-  (cloud sessions are Linux: they can't build or check Swift). Hayat uses a free Apple ID for now (installs expire after
-  7 days). App Store rules for the iOS build: no bundled content or provider links, no `BrandLogos` tiles, ratings as plain
+  (cloud sessions are Linux: they can't build or check Swift). Hayat has a paid developer account since 2026-10-31 (team id in the uncommitted
+  `ios/Config/Local.xcconfig`). App Store rules for the iOS build: no bundled content or provider links, no `BrandLogos` tiles, ratings as plain
   text, no self-updater, http allowed via ATS (`NSAllowsArbitraryLoads`), passwords in the Keychain, `PrivacyInfo.xcprivacy`.
 - Shared debug keystore in `keystore/`: signs debug builds and local release builds, so cloud and laptop builds install
   over each other. It can't install over a published (privately signed) release, or the reverse.

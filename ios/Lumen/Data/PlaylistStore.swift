@@ -86,35 +86,54 @@ final class PlaylistStore {
     private(set) var categoryLabels: [UUID: [String: String]] = [:]
     private let hiddenKey = "hiddenCategories"
     private let labelsKey = "categoryLabels"
+    @ObservationIgnored private var syncStarted = false
     @ObservationIgnored private var movieInfoCache: [String: MovieInfo] = [:]
     @ObservationIgnored private var seriesInfoCache: [String: SeriesInfo] = [:]
 
     init() {
-        if let data = UserDefaults.standard.data(forKey: defaultsKey),
-           let saved = try? JSONDecoder().decode([Playlist].self, from: data) {
-            playlists = saved
-        }
-        if let data = UserDefaults.standard.data(forKey: favouritesKey),
-           let saved = try? JSONDecoder().decode([UUID: [String]].self, from: data) {
-            favouriteKeys = saved
-        }
-        if let data = UserDefaults.standard.data(forKey: progressKey),
-           let saved = try? JSONDecoder().decode([UUID: [String: WatchProgress]].self, from: data) {
-            progress = saved
-        }
-        if let data = UserDefaults.standard.data(forKey: hiddenKey),
-           let saved = try? JSONDecoder().decode([UUID: Set<String>].self, from: data) {
-            hiddenCategories = saved
-        }
-        if let data = UserDefaults.standard.data(forKey: labelsKey),
-           let saved = try? JSONDecoder().decode([UUID: [String: String]].self, from: data) {
-            categoryLabels = saved
-        }
-        if let data = UserDefaults.standard.data(forKey: myListKey),
-           let saved = try? JSONDecoder().decode([UUID: [MyListItem]].self, from: data) {
-            myList = saved
-        }
+        reload(CloudSync.keys)
         selectedID = playlists.first?.id
+        // Another device changed a list: read it again. New playlists load their channels.
+        CloudSync.shared.start { [weak self] keys in
+            guard let self else { return }
+            let known = Set(self.playlists.map(\.id))
+            self.reload(keys)
+            if self.selectedID == nil || !self.playlists.contains(where: { $0.id == self.selectedID }) {
+                self.selectedID = self.playlists.first?.id
+            }
+            // At launch the app's own loadAll() covers it.
+            if keys.contains(self.defaultsKey), self.syncStarted {
+                for gone in known.subtracting(self.playlists.map(\.id)) { self.forget(gone) }
+                Task { await self.loadAll() }
+            }
+        }
+        syncStarted = true
+        // Logins saved before sync existed go up to iCloud Keychain too.
+        for playlist in playlists {
+            if let data = Keychain.load(playlist.id.uuidString) { Keychain.save(data, for: playlist.id.uuidString) }
+        }
+    }
+
+    /// Reads the saved lists from UserDefaults (CloudSync keeps them in step with iCloud).
+    private func reload(_ keys: [String]) {
+        func read<T: Decodable>(_ key: String, _ type: T.Type) -> T? {
+            guard keys.contains(key), let data = UserDefaults.standard.data(forKey: key) else { return nil }
+            return try? JSONDecoder().decode(type, from: data)
+        }
+        if let saved = read(defaultsKey, [Playlist].self) { playlists = saved }
+        if let saved = read(favouritesKey, [UUID: [String]].self) { favouriteKeys = saved }
+        if let saved = read(progressKey, [UUID: [String: WatchProgress]].self) { progress = saved }
+        if let saved = read(hiddenKey, [UUID: Set<String>].self) { hiddenCategories = saved }
+        if let saved = read(labelsKey, [UUID: [String: String]].self) { categoryLabels = saved }
+        if let saved = read(myListKey, [UUID: [MyListItem]].self) { myList = saved }
+    }
+
+    /// A playlist removed on another device: drop what this one loaded for it.
+    private func forget(_ id: UUID) {
+        states[id] = nil
+        guideStates[id] = nil
+        vodStates[id] = nil
+        deleteCache(id)
     }
 
     var selected: Playlist? { playlists.first { $0.id == selectedID } ?? playlists.first }
@@ -308,7 +327,7 @@ final class PlaylistStore {
 
     private func saveFavourites() {
         if let data = try? JSONEncoder().encode(favouriteKeys) {
-            UserDefaults.standard.set(data, forKey: favouritesKey)
+            CloudSync.shared.set(data, forKey: favouritesKey)
         }
     }
 
@@ -547,8 +566,8 @@ final class PlaylistStore {
     }
 
     private func saveCategorySettings() {
-        if let data = try? JSONEncoder().encode(hiddenCategories) { UserDefaults.standard.set(data, forKey: hiddenKey) }
-        if let data = try? JSONEncoder().encode(categoryLabels) { UserDefaults.standard.set(data, forKey: labelsKey) }
+        if let data = try? JSONEncoder().encode(hiddenCategories) { CloudSync.shared.set(data, forKey: hiddenKey) }
+        if let data = try? JSONEncoder().encode(categoryLabels) { CloudSync.shared.set(data, forKey: labelsKey) }
     }
 
     // MARK: My List
@@ -580,7 +599,7 @@ final class PlaylistStore {
 
     private func saveMyList() {
         if let data = try? JSONEncoder().encode(myList) {
-            UserDefaults.standard.set(data, forKey: myListKey)
+            CloudSync.shared.set(data, forKey: myListKey)
         }
     }
 
@@ -612,7 +631,7 @@ final class PlaylistStore {
 
     private func saveProgress() {
         if let data = try? JSONEncoder().encode(progress) {
-            UserDefaults.standard.set(data, forKey: progressKey)
+            CloudSync.shared.set(data, forKey: progressKey)
         }
     }
 
@@ -631,7 +650,7 @@ final class PlaylistStore {
 
     private func save() {
         if let data = try? JSONEncoder().encode(playlists) {
-            UserDefaults.standard.set(data, forKey: defaultsKey)
+            CloudSync.shared.set(data, forKey: defaultsKey)
         }
     }
 
