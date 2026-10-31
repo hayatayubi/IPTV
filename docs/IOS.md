@@ -31,7 +31,9 @@ No $99 needed for now. What the free team means:
   iPhone and iPad (logins through iCloud Keychain).
 - Switch the project to the paid team once: find the **Team ID** at developer.apple.com →
   Account → Membership details, then put it in `ios/Config/Local.xcconfig`:
-  `DEVELOPMENT_TEAM = ABCDE12345` (your own id), and run `./generate.sh` again.
+  `DEVELOPMENT_TEAM = ABCDE12345` (your own id), add a second line `LUMEN_ICLOUD = YES`, and run
+  `./generate.sh` again. (Without that line the project has no iCloud, so it still builds with
+  the free Personal Team while Apple confirms the membership; the app just doesn't sync.)
   In Xcode, Signing & Capabilities should now show your name **without** "(Personal Team)" and an
   **iCloud** capability (key-value storage). Xcode registers it with Apple by itself.
 - Both devices must be signed in to the same Apple Account with iCloud on (Settings → your name

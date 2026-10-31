@@ -96,7 +96,8 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
     on leaving the app); not for films (VLCKit has none).
   - iCloud sync (not yet run; Hayat bought the paid account 2026-10-31): `Data/CloudSync.swift` mirrors the UserDefaults
     JSON keys (playlists, favourites, watchProgress (merged, newest per item wins), myList, hiddenCategories,
-    categoryLabels) to `NSUbiquitousKeyValueStore` (entitlement in project.yml); logins + OMDb key are synchronizable
+    categoryLabels) to `NSUbiquitousKeyValueStore` (entitlement only in `project-icloud.yml`, used by generate.sh when
+    Local.xcconfig has `LUMEN_ICLOUD = YES`: a Personal Team can't sign it); logins + OMDb key are synchronizable
     Keychain items (iCloud Keychain). A playlist arriving from the other device loads via `loadAll()`.
   - App icon: AB2 (Hayat 2026-10-31): soft out-of-focus blue/warm lights + glowing white L with a soft blue-white dot.
   - Not in Phase 1: Left sidebar and Right mini guide in the player (Phases 3/6), logos (Phase 4), settings/source editing (Phase 6).

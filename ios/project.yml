@@ -29,12 +29,6 @@ targets:
       - path: Lumen
     dependencies:
       - package: VLCKitSPM
-    # iCloud key-value storage: favourites, My List, progress and playlists stay the same on the
-    # user's iPhone and iPad (Data/CloudSync.swift). Needs a paid developer team to sign.
-    entitlements:
-      path: Lumen/Lumen.entitlements
-      properties:
-        com.apple.developer.ubiquity-kvstore-identifier: $(TeamIdentifierPrefix)$(CFBundleIdentifier)
     # Builds the shared Kotlin code (../shared) into Shared.framework before Swift compiles.
     preBuildScripts:
       - name: Build shared Kotlin code

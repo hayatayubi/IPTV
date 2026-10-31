@@ -17,4 +17,11 @@ if [ ! -f Config/Local.xcconfig ]; then
   fi
 fi
 
-xcodegen generate
+# iCloud sync needs the paid team: add "LUMEN_ICLOUD = YES" to Config/Local.xcconfig once it's active.
+if grep -q "^LUMEN_ICLOUD *= *YES" Config/Local.xcconfig 2>/dev/null; then
+  echo "iCloud sync on."
+  xcodegen generate --spec project-icloud.yml
+else
+  echo "iCloud sync off (add LUMEN_ICLOUD = YES to Config/Local.xcconfig once your paid team is active)."
+  xcodegen generate
+fi
