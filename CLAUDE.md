@@ -50,9 +50,13 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
     login / Hide / Remove, plus Add playlist), TV guide, Live categories (OK hide, hold OK rename), Movie and Series
     categories (same), Ratings (the user's OMDb key), Updates, About. Live's Categories and the guide's Guide settings
     open it on their section.
-- **iPhone/iPad app.** Started 2026-10-31 (branch `claude/project-thread-avhbdn`). Phase 1: empty SwiftUI app in `ios/`
-  (XcodeGen `project.yml`, the .xcodeproj isn't committed; tabs, Add playlist form not saving yet, Settings → Test video
-  playback). Setup in `docs/IOS.md`. Not yet run on a device. Plan: shared Kotlin Multiplatform core next, SwiftUI screens.
+- **iPhone/iPad app.** Started 2026-10-31 (branch `claude/project-thread-avhbdn`, PR #24). Setup in `docs/IOS.md`.
+  - Phase 1 (ran on Hayat's iPhone 2026-10-31): SwiftUI app in `ios/` (XcodeGen `project.yml`, the .xcodeproj isn't
+    committed): tabs, Settings → Test video playback.
+  - Phase 2 (not yet run on a device): `shared/` Kotlin Multiplatform module. Add playlist (Xtream or M3U; get.php links
+    stored as Xtream) loads channels via `PlaylistLoader`, saves only if that works; login in the Keychain, list in
+    UserDefaults. Live TV: categories → channels (+ search), full-screen AVPlayer, swipe up/down zaps (350 ms debounce).
+    Channels reload at each launch (no on-device database yet).
   - Not in Phase 1: Left sidebar and Right mini guide in the player (Phases 3/6), logos (Phase 4), settings/source editing (Phase 6).
 
 ## Decisions
@@ -160,6 +164,16 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
   (Hayat didn't want their name in links). Public page: https://lumen-tv.github.io (repo `lumen-tv/lumen-tv.github.io`),
   `/get` forwards to the newest APK. `PRIVACY.md` = privacy policy. The brand logo tiles stay in the public build (Hayat's choice
   2026-10-28; they'd have to go for Google Play).
+- **Shared Kotlin** (`shared/`, Kotlin Multiplatform: android + iosArm64 + iosSimulatorArm64 + linuxX64 for tests only):
+  `M3uParser`, `StableKeys` (own `Sha1`), `UrlRedaction` (own `SimpleUri`, matched against `java.net.URI` by
+  `UrlRedactionMatchesUriTest`: stable keys hash its output, so it must never drift), `ChannelNames`, `CategoryNames`
+  (NFKC via expect/actual), `VodNames`, keeping their old packages; the Android app uses them as before. `core/` =
+  iPhone-only for now: `PlaylistLoader` (Ktor + kotlinx.serialization, `XtreamServer`, `XtreamApi`), exported to Swift as
+  `Shared.framework` (`LumenKt.makePlaylistLoader()`, suspend = Swift `async throws`, call from the main actor).
+  Tests: `./gradlew :shared:testAndroidHostTest :shared:linuxX64Test` (native run catches Kotlin/Native regex
+  differences: a negated class with `\p{…}` ignores its other members, so `symbols` uses a lookahead).
+  Xcode runs `ios/build-shared.sh` → `:shared:embedAndSignAppleFrameworkForXcode` (finds Homebrew Java/Android SDK).
+  Cloud sessions can compile the iOS klibs (`:shared:compileKotlinIosArm64`) but can't link the framework or build Swift.
 - **iOS** (`ios/`): SwiftUI, iOS 18+, iPhone + iPad, bundle id `com.hayat.lumen`. Built on Hayat's Mac with Xcode
   (cloud sessions are Linux: they can't build or check Swift). Hayat uses a free Apple ID for now (installs expire after
   7 days). App Store rules for the iOS build: no bundled content or provider links, no `BrandLogos` tiles, ratings as plain
@@ -211,7 +225,7 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
 
 ## Working notes
 
-- Build: `./gradlew assembleDebug` · Tests: `./gradlew testDebugUnitTest` · Lint: `./gradlew lintDebug`.
+- Build: `./gradlew assembleDebug` · Tests: `./gradlew testDebugUnitTest :shared:testAndroidHostTest :shared:linuxX64Test` · Lint: `./gradlew lintDebug`.
 - **Judge smoothness only on release builds.** Debug Compose builds are visibly janky on the Chromecast; release
   (`./gradlew assembleRelease`, R8 + same shared key, installs over debug) was confirmed smooth on the TV.
   Startup profile: the libraries ship theirs, and `app/src/main/baseline-prof.txt` (0.7.0) adds wildcard rules for all of

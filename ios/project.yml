@@ -21,8 +21,18 @@ targets:
     platform: iOS
     sources:
       - path: Lumen
+    # Builds the shared Kotlin code (../shared) into Shared.framework before Swift compiles.
+    preBuildScripts:
+      - name: Build shared Kotlin code
+        script: "\"$SRCROOT/build-shared.sh\""
+        basedOnDependencyAnalysis: false
     settings:
       base:
+        # Where Gradle puts Shared.framework for this build (device or Simulator).
+        FRAMEWORK_SEARCH_PATHS: "$(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"
+        OTHER_LDFLAGS: ["$(inherited)", "-framework", "Shared"]
+        # The script above runs Gradle, which reads and writes outside the Xcode sandbox.
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
         PRODUCT_BUNDLE_IDENTIFIER: com.hayat.lumen
         PRODUCT_NAME: Lumen
         # 1 = iPhone, 2 = iPad: one app for both.

@@ -9,7 +9,7 @@ data class DisplayName(val title: String, val tags: List<String>)
  */
 object ChannelNames {
     // Country/region prefixes: "UK: ", "UK | ", "|UK| ", "[US] ", "US - ", "UK⋆ ".
-    private val prefix = Regex("""^\s*(\[[^]]*]|\|[^|]*\||[A-Za-z]{2,3}\s*[:|\-⋆★•]+)\s*""")
+    private val prefix = Regex("""^\s*(\[[^]]*]|\|[^|]*\||[A-Za-z]{2,3}\s*[:|⋆★•-]+)\s*""")
 
     // Quality/format tags, kept as small chips. Order matters: the first match per kind wins.
     private val qualityTags = listOf(
@@ -19,9 +19,11 @@ object ChannelNames {
     )
     private val noise = Regex("""(?i)\b(SD|HEVC|H\.?26[45]|50FPS|60FPS|RAW|VIP|BACKUP|MULTI|HDR)\b""")
     private val brackets = Regex("""[(\[{]\s*[)\]}]""")
-    private val symbols = Regex("""[^\p{L}\p{N}\s&+'’!.\-:/()]""")
+    // Written as "not one of these, then not a letter/digit/space" because Kotlin/Native (iOS)
+    // ignores the plain characters in a negated class that also has \p{…} (`[^\p{L}-]` drops '-').
+    private val symbols = Regex("""(?![-&+'’!.:/()])[^\p{L}\p{N}\s]""")
     private val spaces = Regex("""\s+""")
-    private val trailingJunk = Regex("""[\s\-:|/.]+$""")
+    private val trailingJunk = Regex("""[\s:|/.-]+$""")
 
     // All-caps words that should stay all-caps when the rest of the name is title-cased.
     private val acronyms = setOf(

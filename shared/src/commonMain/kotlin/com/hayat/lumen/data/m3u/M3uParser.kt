@@ -1,7 +1,5 @@
 package com.hayat.lumen.data.m3u
 
-import java.io.BufferedReader
-
 /** What kind of stream an M3U entry is. Xtream playlists mix live, films and series. */
 enum class EntryKind { LIVE, MOVIE, SERIES }
 
@@ -33,13 +31,14 @@ class M3uParser {
 
     // `sequence { yield(x) }` is Kotlin's generator, like a Swift AsyncSequence
     // without the async: each entry is produced only when the caller asks for it.
-    fun entries(reader: BufferedReader): Sequence<M3uEntry> = sequence {
+    // [lines] is read lazily too: on Android `reader.lineSequence()`, on iPhone the downloaded text's lines.
+    fun entries(lines: Sequence<String>): Sequence<M3uEntry> = sequence {
         var pending: Extinf? = null
         var pendingGroup: String? = null
         var first = true
 
-        while (true) {
-            var line = reader.readLine() ?: break
+        for (raw in lines) {
+            var line = raw
             if (first) {
                 line = line.removePrefix("\uFEFF") // UTF-8 byte-order mark
                 first = false

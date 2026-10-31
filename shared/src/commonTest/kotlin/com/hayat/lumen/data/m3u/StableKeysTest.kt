@@ -1,8 +1,8 @@
 package com.hayat.lumen.data.m3u
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
-import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
+import kotlin.test.Test
 
 class StableKeysTest {
 

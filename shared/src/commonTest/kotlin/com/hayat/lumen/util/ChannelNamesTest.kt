@@ -1,14 +1,14 @@
 package com.hayat.lumen.util
 
-import org.junit.Assert.assertEquals
-import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.Test
 
 class ChannelNamesTest {
 
     private fun check(raw: String, title: String, vararg tags: String) {
         val d = ChannelNames.display(raw)
-        assertEquals(raw, title, d.title)
-        assertEquals(raw, tags.toList(), d.tags)
+        assertEquals(title, d.title, raw)
+        assertEquals(tags.toList(), d.tags, raw)
     }
 
     @Test fun stripsCountryPrefixAndQuality() = check("UK: BBC ONE LONDON 4K ●", "BBC One London", "4K")

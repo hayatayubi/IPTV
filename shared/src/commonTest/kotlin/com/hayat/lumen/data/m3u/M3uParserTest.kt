@@ -1,14 +1,14 @@
 package com.hayat.lumen.data.m3u
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
-import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.Test
 
 class M3uParserTest {
 
     private fun parse(text: String): Pair<List<M3uEntry>, M3uParser> {
         val parser = M3uParser()
-        val entries = parser.entries(text.reader().buffered()).toList()
+        val entries = parser.entries(text.lineSequence()).toList()
         return entries to parser
     }
 
@@ -70,7 +70,7 @@ class M3uParserTest {
     }
 
     @Test
-    fun `malformed lines are skipped, never thrown`() {
+    fun `malformed lines are skipped and never thrown`() {
         val (entries, parser) = parse(
             "\uFEFF#EXTM3U\n" +
                 "#EXTINF:-1 tvg-id=\"a\"\n" + // no comma, no title

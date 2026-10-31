@@ -1,7 +1,8 @@
 # iPhone and iPad app: setup and install
 
-The iOS app lives in `ios/`. It is SwiftUI; the shared Kotlin code (playlists, Xtream, guide)
-joins it in a later phase. iOS apps can only be built on a Mac, with Xcode.
+The iOS app lives in `ios/`. Its screens are SwiftUI; loading playlists (Xtream, M3U), channel
+names and keys come from the shared Kotlin code in `shared/`, which Xcode builds with Gradle into
+`Shared.framework` before each build. iOS apps can only be built on a Mac, with Xcode.
 
 ## 1. Install Xcode and XcodeGen (once)
 
@@ -10,6 +11,9 @@ joins it in a later phase. iOS apps can only be built on a Mac, with Xcode.
 2. In Terminal: `brew install xcodegen`.
    XcodeGen builds `Lumen.xcodeproj` from `ios/project.yml`. The project file isn't in git: it's a
    huge machine-written file that clashes on every merge, so it's rebuilt instead.
+3. Java and the Android command-line tools, which you already have for the TV app
+   (`brew install openjdk@17` and `brew install --cask android-commandlinetools`). Xcode's build
+   script (`ios/build-shared.sh`) finds them in Homebrew's folders by itself.
 
 ## 2. Sign in with your Apple ID (once)
 
@@ -50,11 +54,20 @@ Later runs can go over Wi-Fi: Xcode → Window → Devices and Simulators → yo
 
 No device to hand? Pick an iPhone or iPad **simulator** in the same device menu.
 
+The **first** build after the shared code arrived takes several minutes: Gradle downloads Kotlin's
+iOS compiler once. The step shows as "Build shared Kotlin code" in Xcode's build log (⌘9).
+
 ## 5. What to check
 
-- The four tabs (Live TV, Movies, Series, Settings); on iPad they also fold into a sidebar.
-- Settings → **Test video playback** plays Apple's test stream with sound, rotates to full screen,
-  and Picture in Picture works.
+- Live TV → **Add playlist** (or Settings → Playlists → Add playlist): your Xtream server, username
+  and password, or an M3U link. Add checks the login and loads the channels before saving. The
+  login is stored in the iOS Keychain.
+- Live TV lists the categories; pull down to refresh; search finds channels by name.
+- Tap a channel: it plays full screen. Swipe up/down (or the buttons) to change channel, tap to
+  show/hide the name. Your provider allows one connection, so the old channel stops first.
+- Settings → Playlists: swipe left to remove, hold for Refresh.
+
+Channels load fresh each time the app starts (no saved copy on the phone yet).
 
 ## App Store notes (for later)
 

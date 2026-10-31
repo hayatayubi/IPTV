@@ -6,10 +6,7 @@ struct RootView: View {
     var body: some View {
         TabView {
             Tab("Live TV", systemImage: "tv") {
-                EmptyTab(
-                    title: "Live TV",
-                    message: "Add your playlist or Xtream login to see your channels."
-                )
+                LiveView()
             }
             Tab("Movies", systemImage: "film") {
                 EmptyTab(title: "Movies", message: "Films from your Xtream login show up here.")

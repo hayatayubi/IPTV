@@ -1,7 +1,5 @@
 package com.hayat.lumen.util
 
-import java.text.Normalizer
-
 /**
  * Tidies provider category names for display: "TOP MOVIES ⁴ᴷ ³⁸⁴⁰ᴾ ᴰᴼᴸᴮʸ ᴬᵁᴰᴵᴼ" → "Top Movies" + ["4K"].
  * Providers write tags in superscript letters; NFKC turns those back into plain ones first.
@@ -13,9 +11,12 @@ object CategoryNames {
     )
 
     fun display(raw: String): DisplayName {
-        val plain = Normalizer.normalize(raw, Normalizer.Form.NFKC)
+        val plain = nfkc(raw)
         return ChannelNames.display(plain.replace(extras, " "))
     }
 
     fun title(raw: String): String = display(raw).title
 }
+
+/** Unicode NFKC normalisation: `java.text.Normalizer` on Android, Foundation on iOS. */
+internal expect fun nfkc(s: String): String

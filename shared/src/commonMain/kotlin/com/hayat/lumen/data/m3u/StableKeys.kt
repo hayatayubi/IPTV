@@ -1,7 +1,6 @@
 package com.hayat.lumen.data.m3u
 
 import com.hayat.lumen.util.UrlRedaction
-import java.security.MessageDigest
 
 /**
  * Gives every channel in one import a key that stays the same across refreshes,
@@ -35,7 +34,7 @@ class StableKeys {
 
         fun normaliseName(name: String): String = name.trim().lowercase().replace(spaces, " ")
 
-        private fun sha1(s: String): String =
-            MessageDigest.getInstance("SHA-1").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
+        /** SHA-1 of the UTF-8 bytes, as lowercase hex. Written out because iOS has no MessageDigest. */
+        internal fun sha1(s: String): String = Sha1.hex(s.encodeToByteArray())
     }
 }

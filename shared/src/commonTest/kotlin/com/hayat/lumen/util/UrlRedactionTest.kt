@@ -1,8 +1,8 @@
 package com.hayat.lumen.util
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.Test
 
 class UrlRedactionTest {
 
@@ -13,7 +13,7 @@ class UrlRedactionTest {
     }
 
     @Test
-    fun `without credentials strips query, user-info and Xtream path segments`() {
+    fun `without credentials strips query and user-info and Xtream path segments`() {
         val out = UrlRedaction.withoutCredentials("http://me:secret@h.example.com:8080/live/user/pass/123.ts?token=abc")
         assertEquals("http://h.example.com:8080/live/123.ts", out)
         assertFalse("secret" in out || "pass" in out || "abc" in out)
