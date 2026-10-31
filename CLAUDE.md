@@ -56,7 +56,11 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
   - Phase 2 (not yet run on a device): `shared/` Kotlin Multiplatform module. Add playlist (Xtream or M3U; get.php links
     stored as Xtream) loads channels via `PlaylistLoader`, saves only if that works; login in the Keychain, list in
     UserDefaults. Live TV: categories → channels (+ search), full-screen AVPlayer, swipe up/down zaps (350 ms debounce).
-    Channels reload at each launch (no on-device database yet).
+    Channels reload at each launch (no on-device database yet). Live TV checked on Hayat's iPhone 2026-10-31: works.
+  - Name tiles + favourites (iOS only for now, Hayat 2026-10-31; not yet run): `ChannelArt` = provider logo, else
+    `NameTile` (style A from the TV's Play-Store plan: palette colour by FNV-1a of the name, white name). Favourites:
+    `PlaylistStore.favouriteKeys` (UserDefaults, playlist id → stable keys in order), hold/swipe a row to toggle,
+    a card row at the top of Live TV, Edit sheet to reorder/remove, the player zaps within favourites.
   - Not in Phase 1: Left sidebar and Right mini guide in the player (Phases 3/6), logos (Phase 4), settings/source editing (Phase 6).
 
 ## Decisions

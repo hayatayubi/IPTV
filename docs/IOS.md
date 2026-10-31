@@ -66,6 +66,11 @@ iOS compiler once. The step shows as "Build shared Kotlin code" in Xcode's build
 - Tap a channel: it plays full screen. Swipe up/down (or the buttons) to change channel, tap to
   show/hide the name. Your provider allows one connection, so the old channel stops first.
 - Settings → Playlists: swipe left to remove, hold for Refresh.
+- Channel pictures: the provider's logo, or a coloured tile with the channel's name when there's
+  none (or it doesn't load). No bundled brand logos in the iPhone/iPad app.
+- Favourites: hold a channel (or swipe it right) → Add to favourites; a blue star shows on it. They
+  appear as big cards at the top of Live TV; tap one to watch and swipe to zap through favourites.
+  **Edit** reorders (drag) or removes them. They survive refreshes, like on the TV.
 
 Channels load fresh each time the app starts (no saved copy on the phone yet).
 

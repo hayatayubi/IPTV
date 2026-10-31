@@ -26,6 +26,7 @@ struct LoadedLibrary {
     let library: LiveLibrary
     let categories: [LiveCategory]
     let channelsByCategory: [String: [LiveChannel]]
+    let byKey: [String: LiveChannel]
 
     /// Channels the provider didn't put in any category.
     static let otherKey = "\u{0}other"
@@ -37,6 +38,7 @@ struct LoadedLibrary {
             byCategory[channel.categoryName ?? Self.otherKey, default: []].append(channel)
         }
         channelsByCategory = byCategory
+        byKey = Dictionary(library.channels.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
         categories = library.categories
     }
 }
@@ -57,10 +59,20 @@ final class PlaylistStore {
     private let loader = LumenKt.makePlaylistLoader()
     private let defaultsKey = "playlists"
 
+    /// Favourite channels per playlist, in the user's order, as stable keys (`StableKeys`): the
+    /// same idea as the TV's `favourites` table, so they survive refreshes. A favourite that's
+    /// missing from the playlist is kept and comes back if the channel does.
+    private(set) var favouriteKeys: [UUID: [String]] = [:]
+    private let favouritesKey = "favourites"
+
     init() {
         if let data = UserDefaults.standard.data(forKey: defaultsKey),
            let saved = try? JSONDecoder().decode([Playlist].self, from: data) {
             playlists = saved
+        }
+        if let data = UserDefaults.standard.data(forKey: favouritesKey),
+           let saved = try? JSONDecoder().decode([UUID: [String]].self, from: data) {
+            favouriteKeys = saved
         }
         selectedID = playlists.first?.id
     }
@@ -133,10 +145,51 @@ final class PlaylistStore {
 
     func remove(_ playlist: Playlist) {
         Keychain.delete(playlist.id.uuidString)
+        favouriteKeys[playlist.id] = nil
+        saveFavourites()
         playlists.removeAll { $0.id == playlist.id }
         states[playlist.id] = nil
         if selectedID == playlist.id { selectedID = playlists.first?.id }
         save()
+    }
+
+    // MARK: Favourites
+
+    func isFavourite(_ channel: LiveChannel, in playlist: Playlist) -> Bool {
+        favouriteKeys[playlist.id]?.contains(channel.key) == true
+    }
+
+    func toggleFavourite(_ channel: LiveChannel, in playlist: Playlist) {
+        var keys = favouriteKeys[playlist.id] ?? []
+        if let index = keys.firstIndex(of: channel.key) {
+            keys.remove(at: index)
+        } else {
+            keys.append(channel.key)
+        }
+        favouriteKeys[playlist.id] = keys
+        saveFavourites()
+    }
+
+    /// The favourites that are in the playlist right now, in the user's order.
+    func favourites(in playlist: Playlist) -> [LiveChannel] {
+        guard case .loaded(let loaded) = state(of: playlist) else { return [] }
+        return (favouriteKeys[playlist.id] ?? []).compactMap { loaded.byKey[$0] }
+    }
+
+    /// Saves a new order (or a removal) made on the shown favourites. Favourites that are
+    /// missing from the playlist right now keep their place at the end.
+    func setFavourites(_ shown: [LiveChannel], in playlist: Playlist) {
+        let shownKeys = shown.map(\.key)
+        let present = Set(favourites(in: playlist).map(\.key))
+        let missing = (favouriteKeys[playlist.id] ?? []).filter { !present.contains($0) }
+        favouriteKeys[playlist.id] = shownKeys + missing
+        saveFavourites()
+    }
+
+    private func saveFavourites() {
+        if let data = try? JSONEncoder().encode(favouriteKeys) {
+            UserDefaults.standard.set(data, forKey: favouritesKey)
+        }
     }
 
     private func load(_ login: PlaylistLogin) async throws -> LiveLibrary {

@@ -7,6 +7,7 @@ struct LiveView: View {
     @Environment(PlaylistStore.self) private var store
     @State private var search = ""
     @State private var playing: PlayerRoute?
+    @State private var editingFavourites = false
 
     var body: some View {
         if let playlist = store.selected {
@@ -46,6 +47,19 @@ struct LiveView: View {
         case .loaded(let loaded):
             List {
                 if search.isEmpty {
+                    let favourites = store.favourites(in: playlist)
+                    if !favourites.isEmpty {
+                        Section {
+                            FavouritesRow(channels: favourites, playing: $playing)
+                        } header: {
+                            HStack {
+                                Text("Favourites")
+                                Spacer()
+                                Button("Edit") { editingFavourites = true }
+                                    .textCase(nil)
+                            }
+                        }
+                    }
                     ForEach(loaded.categories, id: \.name) { category in
                         NavigationLink(value: CategoryRoute(
                             title: category.title,
@@ -68,6 +82,7 @@ struct LiveView: View {
             }
             .font(LumenFont.body)
             .playerCover($playing)
+            .sheet(isPresented: $editingFavourites) { FavouritesEditView(playlist: playlist) }
             .searchable(text: $search, prompt: "Search channels")
             .refreshable { await store.refresh(playlist) }
         }
@@ -118,6 +133,7 @@ struct ChannelListView: View {
 struct ChannelRows: View {
     let channels: [LiveChannel]
     @Binding var playing: PlayerRoute?
+    @Environment(PlaylistStore.self) private var store
 
     var body: some View {
         ForEach(Array(channels.enumerated()), id: \.element.key) { index, channel in
@@ -133,8 +149,122 @@ struct ChannelRows: View {
                     if let quality = channel.quality {
                         QualityTag(text: quality)
                     }
+                    if isFavourite(channel) {
+                        Image(systemName: "star.fill")
+                            .foregroundStyle(LumenColors.accent)
+                            .accessibilityLabel("Favourite")
+                    }
                 }
             }
+            // Hold a channel (or swipe right) to add or remove it from favourites.
+            .contextMenu { favouriteButton(channel) }
+            .swipeActions(edge: .leading) {
+                favouriteButton(channel).tint(LumenColors.accent)
+            }
+        }
+    }
+}
+
+private extension ChannelRows {
+    func isFavourite(_ channel: LiveChannel) -> Bool {
+        store.selected.map { store.isFavourite(channel, in: $0) } ?? false
+    }
+
+    @ViewBuilder
+    func favouriteButton(_ channel: LiveChannel) -> some View {
+        if let playlist = store.selected {
+            if store.isFavourite(channel, in: playlist) {
+                Button("Remove from favourites", systemImage: "star.slash") {
+                    store.toggleFavourite(channel, in: playlist)
+                }
+            } else {
+                Button("Add to favourites", systemImage: "star") {
+                    store.toggleFavourite(channel, in: playlist)
+                }
+            }
+        }
+    }
+}
+
+/// Favourites as big 16:9 cards in a row you scroll sideways. Tap plays (zapping through
+/// favourites); hold for Remove.
+struct FavouritesRow: View {
+    let channels: [LiveChannel]
+    @Binding var playing: PlayerRoute?
+    @Environment(PlaylistStore.self) private var store
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(alignment: .top, spacing: 14) {
+                ForEach(Array(channels.enumerated()), id: \.element.key) { index, channel in
+                    Button {
+                        playing = PlayerRoute(channels: channels, index: index)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 6) {
+                            ChannelArt(logoUrl: channel.logoUrl, title: channel.title, cornerRadius: 14)
+                                .frame(width: 200, height: 112.5)
+                            Text(channel.title)
+                                .font(LumenFont.caption)
+                                .foregroundStyle(LumenColors.textSecondary)
+                                .lineLimit(1)
+                                .frame(width: 200, alignment: .leading)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu {
+                        if let playlist = store.selected {
+                            Button("Remove from favourites", systemImage: "star.slash", role: .destructive) {
+                                store.toggleFavourite(channel, in: playlist)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(.vertical, 4)
+        }
+        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+        .listRowBackground(Color.clear)
+    }
+}
+
+/// Reorder (drag the handles) or remove favourites, the iOS way.
+struct FavouritesEditView: View {
+    let playlist: Playlist
+    @Environment(PlaylistStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    @State private var channels: [LiveChannel] = []
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(channels, id: \.key) { channel in
+                    HStack(spacing: 14) {
+                        ChannelLogo(url: channel.logoUrl, title: channel.title, size: 36)
+                        Text(channel.title).lineLimit(1)
+                    }
+                }
+                .onMove { from, to in
+                    channels.move(fromOffsets: from, toOffset: to)
+                    store.setFavourites(channels, in: playlist)
+                }
+                .onDelete { offsets in
+                    channels.remove(atOffsets: offsets)
+                    store.setFavourites(channels, in: playlist)
+                }
+            }
+            .font(LumenFont.body)
+            // Always in edit mode: drag handles and delete buttons show straight away.
+            .environment(\.editMode, .constant(.active))
+            .scrollContentBackground(.hidden)
+            .background(AmbientBackground())
+            .navigationTitle("Favourites")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .onAppear { channels = store.favourites(in: playlist) }
         }
     }
 }
@@ -154,32 +284,15 @@ struct PlayerRoute: Identifiable {
     let index: Int
 }
 
-/// The provider's logo on a small glass tile, or the first letter when there's none.
+/// A small 16:9 channel picture for rows and the player bar.
 struct ChannelLogo: View {
     let url: String?
     let title: String
     var size: CGFloat = 44
 
     var body: some View {
-        ZStack {
-            if let url, let parsed = URL(string: url) {
-                AsyncImage(url: parsed) { image in
-                    image.resizable().scaledToFit().padding(5)
-                } placeholder: {
-                    monogram
-                }
-            } else {
-                monogram
-            }
-        }
-        .frame(width: size * 16 / 9, height: size)
-        .glass(cornerRadius: 10)
-    }
-
-    private var monogram: some View {
-        Text(title.prefix(1).uppercased())
-            .font(LumenFont.headline)
-            .foregroundStyle(LumenColors.textSecondary)
+        ChannelArt(logoUrl: url, title: title, cornerRadius: 8)
+            .frame(width: size * 16 / 9, height: size)
     }
 }
 
