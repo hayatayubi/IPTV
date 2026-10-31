@@ -14,7 +14,7 @@ struct LiveChannelsView: View {
     var body: some View {
         Group {
             if let playlist = store.selected, case .loaded(let loaded) = store.state(of: playlist) {
-                content(loaded)
+                content(playlist, loaded)
             } else {
                 StatusMessage(text: "Loading channels…", loading: true)
             }
@@ -26,8 +26,9 @@ struct LiveChannelsView: View {
         .playerCover($playing)
     }
 
-    private func content(_ loaded: LoadedLibrary) -> some View {
-        let categories = Self.categories(loaded)
+    private func content(_ playlist: Playlist, _ loaded: LoadedLibrary) -> some View {
+        // Hidden categories left out, renamed ones under the user's name (Settings → Categories).
+        let categories = store.visibleLiveCategories(loaded, in: playlist).map { CategoryItem(key: $0.key, title: $0.title) }
         let chosen = category ?? categories.first?.key
         let channels: [LiveChannel] = search.isEmpty
             ? loaded.channelsByCategory[chosen ?? ""] ?? []
@@ -74,15 +75,6 @@ struct LiveChannelsView: View {
             .contentMargins(.horizontal, wide ? 36 : 8, for: .scrollContent)
             .id(chosen) // a new category starts at the top
         }
-    }
-
-    /// Categories in the provider's order, then the channels without one.
-    static func categories(_ loaded: LoadedLibrary) -> [CategoryItem] {
-        var items = loaded.categories.map { CategoryItem(key: $0.name, title: $0.title) }
-        if loaded.channelsByCategory[LoadedLibrary.otherKey] != nil {
-            items.append(CategoryItem(key: LoadedLibrary.otherKey, title: "Other channels"))
-        }
-        return items
     }
 
     struct CategoryItem: Hashable {
@@ -197,8 +189,8 @@ struct ChannelRows: View {
     }
 
     private func categoryTitle(_ channel: LiveChannel) -> String? {
-        guard let name = channel.categoryName else { return nil }
-        return loaded?.categories.first { $0.name == name }?.title ?? name
+        guard let loaded else { return channel.categoryName }
+        return store.liveCategoryTitle(channel.categoryName, in: store.selected, loaded: loaded)
     }
 }
 

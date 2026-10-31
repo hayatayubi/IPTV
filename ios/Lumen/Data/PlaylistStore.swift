@@ -538,6 +538,14 @@ final class PlaylistStore {
         return label(Self.liveCategoryKey(name), fallback: fallback, in: playlist)
     }
 
+    func vodCategoryKey(_ category: VodCategory, _ kind: VodKind) -> String {
+        kind == .movies ? Self.movieCategoryKey(category.id) : Self.seriesCategoryKey(category.id)
+    }
+
+    func vodCategoryTitle(_ category: VodCategory, _ kind: VodKind, in playlist: Playlist) -> String {
+        label(vodCategoryKey(category, kind), fallback: category.title, in: playlist)
+    }
+
     private func saveCategorySettings() {
         if let data = try? JSONEncoder().encode(hiddenCategories) { UserDefaults.standard.set(data, forKey: hiddenKey) }
         if let data = try? JSONEncoder().encode(categoryLabels) { UserDefaults.standard.set(data, forKey: labelsKey) }

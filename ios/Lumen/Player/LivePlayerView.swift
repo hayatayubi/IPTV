@@ -4,11 +4,13 @@ import Shared
 import SwiftUI
 
 /// Full-screen live TV. Swipe up or down to change channel (like Up/Down on the TV remote),
-/// tap to show or hide the channel name and buttons.
+/// tap to show or hide the channel name and buttons. Leaving the app (or the Picture in Picture
+/// button) keeps the channel playing in a small window over other apps.
 struct LivePlayerView: View {
     let channels: [LiveChannel]
     @State private var index: Int
     @State private var model = LivePlayerModel()
+    @State private var pip = PictureInPicture()
     @State private var chromeVisible = true
     @State private var hideTask: Task<Void, Never>?
     @Environment(\.dismiss) private var dismiss
@@ -24,7 +26,7 @@ struct LivePlayerView: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            PlayerLayerView(player: model.player).ignoresSafeArea()
+            PlayerLayerView(player: model.player, onLayer: { pip.attach($0) }).ignoresSafeArea()
 
             if model.isBuffering {
                 ProgressView().controlSize(.large).tint(.white)
@@ -57,6 +59,7 @@ struct LivePlayerView: View {
             scheduleHide()
         }
         .onDisappear {
+            pip.stop()
             model.stop()
             UIApplication.shared.isIdleTimerDisabled = false
         }
@@ -82,6 +85,11 @@ struct LivePlayerView: View {
                 HStack {
                     CircleGlassButton(systemImage: "xmark", label: "Close", size: 44, fill: .black.opacity(0.35)) { dismiss() }
                     Spacer()
+                    if pip.isPossible {
+                        CircleGlassButton(systemImage: pip.isActive ? "pip.exit" : "pip.enter", label: "Picture in Picture",
+                                          size: 44, fill: .black.opacity(0.35)) { pip.toggle() }
+                            .padding(.trailing, 10)
+                    }
                     AirPlayButton()
                         .frame(width: 44, height: 44)
                         .glass(cornerRadius: 22, fill: .black.opacity(0.35))
@@ -228,6 +236,8 @@ struct AirPlayButton: UIViewRepresentable {
 /// controls and gestures, which would fight the swipe-to-zap gesture.)
 struct PlayerLayerView: UIViewRepresentable {
     let player: AVPlayer
+    /// Hands over the layer once (the live player builds Picture in Picture on it).
+    var onLayer: ((AVPlayerLayer) -> Void)?
 
     final class LayerView: UIView {
         override class var layerClass: AnyClass { AVPlayerLayer.self }
@@ -239,6 +249,7 @@ struct PlayerLayerView: UIViewRepresentable {
         view.playerLayer.player = player
         view.playerLayer.videoGravity = .resizeAspect
         view.backgroundColor = .black
+        onLayer?(view.playerLayer)
         return view
     }
 

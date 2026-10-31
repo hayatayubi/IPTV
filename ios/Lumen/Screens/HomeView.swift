@@ -58,10 +58,7 @@ struct HomeView: View {
                 .padding(.bottom, 24)
             }
             .scrollIndicators(.hidden)
-            .refreshable {
-                await store.refresh(playlist)
-                await store.loadGuide(playlist)
-            }
+            .refreshable { await store.refreshEverything(playlist) }
             .background(AmbientBackground(tint: hero.map { NameTile.colour(for: $0.title) } ?? LumenColors.ambientCool))
             .sheet(isPresented: $editingFavourites) { FavouritesEditView(playlist: playlist) }
         }

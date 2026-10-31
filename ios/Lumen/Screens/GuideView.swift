@@ -72,7 +72,7 @@ struct GuideView: View {
 
     private func content(_ playlist: Playlist, _ loaded: LoadedLibrary) -> some View {
         let favourites = store.favourites(in: playlist)
-        let current: Source? = source ?? (favourites.isEmpty ? loaded.categories.first.map { Source.category($0.name) } : Source.favourites)
+        let current: Source? = source ?? (favourites.isEmpty ? store.visibleLiveCategories(loaded, in: playlist).first.map { Source.category($0.key) } : Source.favourites)
         let rows: [LiveChannel] = switch current {
         case .favourites: favourites
         case .category(let name): loaded.channelsByCategory[name] ?? []
@@ -144,8 +144,10 @@ struct GuideView: View {
         Menu {
             Picker("Channels", selection: Binding(get: { current }, set: { source = $0; selected = nil })) {
                 if !favourites.isEmpty { Text("Favourites").tag(Optional(Source.favourites)) }
-                ForEach(loaded.categories, id: \.name) { category in
-                    Text(category.title).tag(Optional(Source.category(category.name)))
+                if let playlist = store.selected {
+                    ForEach(store.visibleLiveCategories(loaded, in: playlist), id: \.key) { category in
+                        Text(category.title).tag(Optional(Source.category(category.key)))
+                    }
                 }
             }
         } label: {
@@ -411,7 +413,7 @@ struct GuideView: View {
     private var currentRows: [LiveChannel] {
         guard let playlist = store.selected, case .loaded(let loaded) = store.state(of: playlist) else { return [] }
         let favourites = store.favourites(in: playlist)
-        let current: Source? = source ?? (favourites.isEmpty ? loaded.categories.first.map { Source.category($0.name) } : Source.favourites)
+        let current: Source? = source ?? (favourites.isEmpty ? store.visibleLiveCategories(loaded, in: playlist).first.map { Source.category($0.key) } : Source.favourites)
         switch current {
         case .favourites: return favourites
         case .category(let name): return loaded.channelsByCategory[name] ?? []
@@ -459,7 +461,7 @@ struct GuideView: View {
     private func title(_ source: Source?, _ loaded: LoadedLibrary) -> String {
         switch source {
         case .favourites: "Favourites"
-        case .category(let name): loaded.categories.first { $0.name == name }?.title ?? name
+        case .category(let name): store.liveCategoryTitle(name, in: store.selected, loaded: loaded) ?? name
         case nil: "Channels"
         }
     }

@@ -131,7 +131,7 @@ struct RatingsRow: View {
 
     var body: some View {
         if !items.isEmpty {
-            HStack(alignment: .top, spacing: 36) {
+            HStack(alignment: .top, spacing: 28) {
                 ForEach(items.indices, id: \.self) { i in
                     VStack(alignment: .leading, spacing: 2) {
                         Text(items[i].value).font(LumenFont.inter(30, .semibold)).foregroundStyle(LumenColors.textPrimary)
@@ -195,6 +195,7 @@ struct MovieDetailView: View {
     @Environment(PlaylistStore.self) private var store
     @Environment(\.lumenWide) private var wide
     @State private var info: MovieInfo?
+    @State private var omdb: OmdbRatings?
     @State private var playback: VodPlayback?
 
     private var key: String { WatchProgress.movieKey(movie.id) }
@@ -224,6 +225,7 @@ struct MovieDetailView: View {
         .scrollIndicators(.hidden)
         .detailPageChrome()
         .task { info = try? await store.movieInfo(movie, in: playlist) }
+        .task { omdb = await Omdb.shared.ratings(title: movie.title, year: movie.year?.intValue, series: false) }
         .fullScreenCover(item: $playback) { VodPlayerView(playback: $0, playlist: playlist) }
     }
 
@@ -236,10 +238,7 @@ struct MovieDetailView: View {
     }
 
     private var ratings: [(value: String, label: String)] {
-        var items: [(value: String, label: String)] = []
-        if let rating = movie.rating?.doubleValue, rating > 0 { items.append((String(format: "%.1f", rating), "Rating")) }
-        if let age = info?.ageRating { items.append((age, "Age rating")) }
-        return items
+        OmdbRatings.items(omdb, provider: movie.rating?.doubleValue, age: info?.ageRating)
     }
 
     /// iPhone: Resume and the heart on one line, Start over full width under them.
@@ -288,6 +287,7 @@ struct SeriesDetailView: View {
     @State private var info: SeriesInfo?
     @State private var error: String?
     @State private var season: Int32 = 1
+    @State private var omdb: OmdbRatings?
     @State private var playback: VodPlayback?
 
     var body: some View {
@@ -307,9 +307,7 @@ struct SeriesDetailView: View {
                             store.toggleMyList(series, in: playlist)
                         }
                     }
-                    if let rating = series.rating?.doubleValue, rating > 0 {
-                        RatingsRow(items: [(String(format: "%.1f", rating), "Rating")]).padding(.top, 4)
-                    }
+                    RatingsRow(items: OmdbRatings.items(omdb, provider: series.rating?.doubleValue, age: nil)).padding(.top, 4)
                     if let plot = series.plot {
                         Text(plot).font(LumenFont.inter(wide ? 18 : 16)).foregroundStyle(LumenColors.textPrimary.opacity(0.9))
                             .lineSpacing(3)
@@ -324,6 +322,7 @@ struct SeriesDetailView: View {
         }
         .scrollIndicators(.hidden)
         .detailPageChrome()
+        .task { omdb = await Omdb.shared.ratings(title: series.title, year: series.year?.intValue, series: true) }
         .task {
             do {
                 let loaded = try await store.seriesInfo(series, in: playlist)

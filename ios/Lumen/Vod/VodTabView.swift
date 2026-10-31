@@ -49,9 +49,10 @@ struct VodTabView: View {
                     }
                     ContinueWatchingRow(kind: kind, playlist: playlist, index: index)
                     if kind == .movies {
-                        ForEach(index.movieCategories, id: \.id) { category in
+                        ForEach(visible(index.movieCategories, playlist), id: \.id) { category in
                             let movies = index.moviesByCategory[category.id] ?? []
-                            PosterRow(category: category, route: VodCategoryRoute(category: category, kind: .movies)) {
+                            PosterRow(category: category, title: store.vodCategoryTitle(category, .movies, in: playlist),
+                                      route: VodCategoryRoute(category: category, kind: .movies)) {
                                 ForEach(movies.prefix(30), id: \.id) { movie in
                                     NavigationLink(value: movie) {
                                         Poster(url: movie.posterUrl, title: movie.title, subtitle: movie.year.map { "\($0.intValue)" }, width: wide ? 160 : 116)
@@ -60,9 +61,10 @@ struct VodTabView: View {
                             }
                         }
                     } else {
-                        ForEach(index.seriesCategories, id: \.id) { category in
+                        ForEach(visible(index.seriesCategories, playlist), id: \.id) { category in
                             let series = index.seriesByCategory[category.id] ?? []
-                            PosterRow(category: category, route: VodCategoryRoute(category: category, kind: .series)) {
+                            PosterRow(category: category, title: store.vodCategoryTitle(category, .series, in: playlist),
+                                      route: VodCategoryRoute(category: category, kind: .series)) {
                                 ForEach(series.prefix(30), id: \.id) { show in
                                     NavigationLink(value: show) {
                                         Poster(url: show.posterUrl, title: show.title, subtitle: show.year.map { "\($0.intValue)" }, width: wide ? 160 : 116)
@@ -78,6 +80,11 @@ struct VodTabView: View {
             .refreshable { await store.loadVod(playlist) }
             .background(AmbientBackground())
         }
+    }
+
+    /// Leaves out the categories hidden in Settings → Categories.
+    private func visible(_ categories: [VodCategory], _ playlist: Playlist) -> [VodCategory] {
+        categories.filter { !store.isHidden(store.vodCategoryKey($0, kind), in: playlist) }
     }
 }
 
@@ -114,6 +121,8 @@ struct MyListButton: View {
 /// A category's title (with its 4K tag) and "See all", over a sideways row of posters.
 struct PosterRow<Content: View>: View {
     let category: VodCategory
+    /// The user's name for it, else the tidied provider name.
+    let title: String
     let route: VodCategoryRoute
     @ViewBuilder let content: () -> Content
     @Environment(\.lumenWide) private var wide
@@ -121,7 +130,7 @@ struct PosterRow<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(category.title).font(LumenFont.inter(wide ? 22 : 19, .semibold)).foregroundStyle(LumenColors.textPrimary)
+                Text(title).font(LumenFont.inter(wide ? 22 : 19, .semibold)).foregroundStyle(LumenColors.textPrimary)
                     .lineLimit(1)
                 if let quality = category.quality { QualityTag(text: quality) }
                 Spacer()
@@ -304,7 +313,7 @@ struct VodGridView: View {
         .background(AmbientBackground())
         .toolbar(.visible, for: .navigationBar)
         .toolbarBackground(.hidden, for: .navigationBar)
-        .navigationTitle(route.category.title)
+        .navigationTitle(store.vodCategoryTitle(route.category, route.kind, in: playlist))
         .searchable(text: $search, prompt: "Search this category")
     }
 

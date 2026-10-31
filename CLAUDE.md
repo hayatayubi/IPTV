@@ -78,9 +78,22 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
   - TV guide (not yet run): shared `PlaylistLoader.loadXtreamGuide/loadGuide` stream XMLTV through `XmltvReader`
     (hand-rolled, common Kotlin; tested in `GuideTest`), keeping now − 2 h … now + 36 h for the playlist's tvg-ids, into
     `Guide` (`nowNext`, `between`, `schedule`; epoch seconds). `.gz` guide files aren't read on iOS yet. Loaded at launch
-    after the channels, in memory only. Home hero now/next + tile progress, row "now" lines, player line. `GuideView`
-    (Home → TV guide): 2-axis ScrollView, pinned ruler, channel column follows `onScrollGeometryChange`; tap = select
-    (iPhone details card / iPad panel with muted preview), double-tap = watch. No guide in the player (Hayat 2026-10-31).
+    after the channels. Home hero now/next + tile progress, row "now" lines, player line. `GuideView`
+    (Home → TV guide): a horizontal ScrollView holding the ruler + a vertical one (one direction per drag: Hayat found a
+    free 2-axis pan felt like an overlay), opens on the current half hour; channel column follows
+    `onScrollGeometryChange` (unclamped, so it stays put during bounce); tap = select (iPhone details card in a bottom
+    `safeAreaInset`, above the tab bar / iPad panel with muted preview), double-tap = watch. No guide in the player.
+  - Saved on the phone (not yet run): shared `LibraryCache` writes channels/guide/VOD as JSON to Caches/Lumen/<id>-live|guide|vod.json;
+    launch shows them at once, then refreshes quietly (live + guide after 12 h, VOD after 24 h); failures keep old data.
+  - Settings (not yet run): playlist page (rename, refresh everything, change Xtream login / M3U link: saved only if the
+    channels load, blank password keeps the old; guide link; remove). Categories for Live/Movies/Series: tick = shown,
+    search, Show all / Hide all on the matches, hold/swipe to rename (UserDefaults `hiddenCategories`/`categoryLabels`,
+    keys `l:<name>`, `m:<id>`, `s:<id>`). Ratings: user's OMDb key in the Keychain (`Data/Ratings.swift`, checked first);
+    film/series pages show Rotten Tomatoes %, IMDb + votes, age as plain text, provider score only without OMDb.
+  - Player extras (not yet run): VOD remembers the audio/subtitle track name (`preferredAudioTrack`/`preferredSubtitleTrack`,
+    matched on name then language word). Live TV: Picture in Picture (`Player/PictureInPicture.swift`, button + automatic
+    on leaving the app); not for films (VLCKit has none).
+  - App icon: AB2 (Hayat 2026-10-31): soft out-of-focus blue/warm lights + glowing white L with a soft blue-white dot.
   - Not in Phase 1: Left sidebar and Right mini guide in the player (Phases 3/6), logos (Phase 4), settings/source editing (Phase 6).
 
 ## Decisions
