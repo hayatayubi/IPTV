@@ -239,20 +239,21 @@ struct GuideView: View {
                     .fixedSize()
                     .offset(x: leading + CGFloat(i * 30) * ppm)
             }
-            columnBackdrop(width: leading, height: 26)
         }
         .frame(width: leading + totalWidth, height: 26, alignment: .topLeading)
+        .mask(alignment: .topLeading) { visibleRightOfColumn(leading) }
     }
 
-    /// Solid behind the channel column (and the corner above it), following the sideways scroll.
-    private func columnBackdrop(width: CGFloat, height: CGFloat) -> some View {
-        LinearGradient(
-            stops: [.init(color: LumenColors.background.opacity(0.95), location: 0.92), .init(color: LumenColors.background.opacity(0), location: 1)],
-            startPoint: .leading, endPoint: .trailing
-        )
-        .frame(width: width, height: height)
+    /// A mask that hides what scrolls into the channel column (with a short fade), so the
+    /// programmes and times disappear behind the tiles over the page's own background. A dark
+    /// strip behind the column did the same but showed as a darker band (Hayat 2026-10-31).
+    private func visibleRightOfColumn(_ leading: CGFloat) -> some View {
+        HStack(spacing: 0) {
+            Color.clear.frame(width: leading - 4)
+            LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing).frame(width: 12)
+            Color.black
+        }
         .pinnedToLeadingEdge()
-        .allowsHitTesting(false)
     }
 
     private func rulerLabel(_ time: Date, first: Bool) -> String {
@@ -271,26 +272,28 @@ struct GuideView: View {
         let programmes = guide?.between(tvgId: channel.tvgId, from: from, to: to) ?? []
         let visibleLeft = leading + max(0, scrollX)
         return ZStack(alignment: .topLeading) {
-            if programmes.isEmpty {
-                cell(title: guide == nil ? "" : "No guide info", time: nil, kind: .none,
-                     x: leading, width: totalWidth, textShift: max(0, scrollX))
+            ZStack(alignment: .topLeading) {
+                if programmes.isEmpty {
+                    cell(title: guide == nil ? "" : "No guide info", time: nil, kind: .none,
+                         x: leading, width: totalWidth, textShift: max(0, scrollX))
+                }
+                ForEach(programmes, id: \.start) { p in
+                    let x = leading + CGFloat(Double(p.start - from) / 60) * ppm
+                    let end = leading + CGFloat(Double(p.stop - from) / 60) * ppm
+                    let left = max(x, leading)
+                    let isSelected = selected == Selection(channelKey: channel.key, programmeStart: p.start)
+                    let isNow = p.start <= Int64(now.timeIntervalSince1970) && Int64(now.timeIntervalSince1970) < p.stop
+                    cell(title: p.title, time: p.startDate.formatted(date: .omitted, time: .shortened),
+                         kind: isSelected ? .selected : (isNow ? .now : .normal),
+                         x: left, width: end - left, textShift: max(0, visibleLeft - left))
+                        // Double-tap watches; a single tap (after the double-tap window) selects.
+                        .onTapGesture(count: 2) { play(channel, in: currentRows) }
+                        .onTapGesture { selected = Selection(channelKey: channel.key, programmeStart: p.start) }
+                }
             }
-            ForEach(programmes, id: \.start) { p in
-                let x = leading + CGFloat(Double(p.start - from) / 60) * ppm
-                let end = leading + CGFloat(Double(p.stop - from) / 60) * ppm
-                let left = max(x, leading)
-                let isSelected = selected == Selection(channelKey: channel.key, programmeStart: p.start)
-                let isNow = p.start <= Int64(now.timeIntervalSince1970) && Int64(now.timeIntervalSince1970) < p.stop
-                cell(title: p.title, time: p.startDate.formatted(date: .omitted, time: .shortened),
-                     kind: isSelected ? .selected : (isNow ? .now : .normal),
-                     x: left, width: end - left, textShift: max(0, visibleLeft - left))
-                    // Double-tap watches; a single tap (after the double-tap window) selects.
-                    .onTapGesture(count: 2) { play(channel, in: currentRows) }
-                    .onTapGesture { selected = Selection(channelKey: channel.key, programmeStart: p.start) }
-            }
-            // The channel stays at the left edge while the programmes scroll under it; a dark
-            // strip behind it hides them there.
-            columnBackdrop(width: leading, height: rowHeight)
+            .frame(width: leading + totalWidth, height: rowHeight, alignment: .topLeading)
+            // The channel stays at the left edge; the programmes vanish as they scroll under it.
+            .mask(alignment: .topLeading) { visibleRightOfColumn(leading) }
             Button { play(channel, in: currentRows) } label: {
                 ChannelArt(logoUrl: channel.logoUrl, title: channel.title, cornerRadius: 9)
                     .frame(width: tileWidth, height: rowHeight - 12)
