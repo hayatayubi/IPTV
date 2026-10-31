@@ -32,7 +32,7 @@ struct RootView: View {
             if wide {
                 TopTabBar(tab: tab, select: select, search: { searching = true })
             } else {
-                BottomTabBar(tab: tab, select: select)
+                BottomTabBar(tab: tab, select: select, search: { searching = true })
             }
         }
         // The keyboard covers the bar instead of pushing it up.
@@ -91,8 +91,31 @@ enum AppTab: String, CaseIterable, Identifiable {
 struct BottomTabBar: View {
     let tab: AppTab
     let select: (AppTab) -> Void
+    let search: () -> Void
 
     var body: some View {
+        HStack(spacing: 8) {
+            tabs
+            // Search sits apart from the tabs in its own glass circle: it opens over the open tab
+            // instead of being a place of its own.
+            Button(action: search) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(LumenColors.textPrimary)
+                    .frame(width: 58, height: 58)
+                    .background(.ultraThinMaterial, in: Circle())
+                    .background(Color(hex: 0x282A32).opacity(0.6), in: Circle())
+                    .overlay(Circle().strokeBorder(Color.white.opacity(0.12), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Search")
+        }
+        .padding(.horizontal, 12)
+        .padding(.bottom, 4)
+        .animation(.easeOut(duration: 0.18), value: tab)
+    }
+
+    private var tabs: some View {
         HStack(spacing: 0) {
             ForEach(AppTab.allCases) { item in
                 let on = item == tab
@@ -104,7 +127,7 @@ struct BottomTabBar: View {
                         Text(item.title).font(LumenFont.inter(11, .medium)).lineLimit(1).fixedSize()
                     }
                     .foregroundStyle(on ? LumenColors.background : LumenColors.textSecondary)
-                    .padding(.horizontal, 10)
+                    .padding(.horizontal, 7)
                     .padding(.vertical, 7)
                     .background(on ? Color.white : Color.clear, in: Capsule())
                     .frame(maxWidth: .infinity)
@@ -114,15 +137,12 @@ struct BottomTabBar: View {
                 .accessibilityAddTraits(on ? .isSelected : [])
             }
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 7)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 5)
         // A real blur here (cheap on a phone), tinted dark, so rows scrolling under stay readable.
         .background(.ultraThinMaterial, in: Capsule())
         .background(Color(hex: 0x282A32).opacity(0.6), in: Capsule())
         .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 1))
-        .padding(.horizontal, 16)
-        .padding(.bottom, 4)
-        .animation(.easeOut(duration: 0.18), value: tab)
     }
 }
 

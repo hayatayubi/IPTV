@@ -105,7 +105,6 @@ struct VodHero: View {
     var topInset: CGFloat = 0
     @Environment(PlaylistStore.self) private var store
     @Environment(\.lumenWide) private var wide
-    @Environment(\.openSearch) private var openSearch
     @State private var movieInfo: MovieInfo?
     @State private var playback: VodPlayback?
 
@@ -113,15 +112,13 @@ struct VodHero: View {
         let height: CGFloat = wide ? 560 : 500
         ZStack(alignment: .bottomLeading) {
             Backdrop(url: backdropUrl, height: height + topInset, wide: wide)
-                .padding(.top, -topInset)
             VStack(alignment: .leading, spacing: 0) {
                 if !wide {
-                    HStack {
-                        Text(title).font(LumenFont.inter(34, .semibold)).foregroundStyle(LumenColors.textPrimary)
-                        Spacer()
-                        CircleGlassButton(systemImage: "magnifyingglass", label: "Search", fill: .black.opacity(0.25), action: openSearch)
-                    }
-                    .padding(.top, 8)
+                    Text(title)
+                        .font(LumenFont.inter(34, .semibold))
+                        .foregroundStyle(LumenColors.textPrimary)
+                        .shadow(color: .black.opacity(0.4), radius: 8)
+                        .padding(.top, topInset + 8)
                 }
                 Spacer(minLength: 0)
                 if let movie {
@@ -142,10 +139,11 @@ struct VodHero: View {
                     )
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .lumenGutter(wide)
             .padding(.bottom, 6)
         }
-        .frame(height: height)
+        .frame(height: height + topInset)
         .task(id: movie?.id) {
             guard let movie else { return }
             movieInfo = try? await store.movieInfo(movie, in: playlist)

@@ -8,7 +8,6 @@ import SwiftUI
 struct HomeView: View {
     @Environment(PlaylistStore.self) private var store
     @Environment(\.lumenWide) private var wide
-    @Environment(\.openSearch) private var openSearch
     @State private var playing: PlayerRoute?
     /// The favourite shown in the hero: the last one watched (the TV uses the focused card;
     /// a touch screen has no focus, so it follows what you tap).
@@ -60,16 +59,12 @@ struct HomeView: View {
         }
     }
 
-    /// iPhone only (the iPad has the clock and search in its top bar): today's date and search.
+    /// iPhone only (the iPad has the clock in its top bar): today's date.
     private var phoneHeader: some View {
-        HStack {
-            Text(Date.now, format: .dateTime.weekday(.wide).day().month(.wide))
-                .font(LumenFont.body)
-                .foregroundStyle(LumenColors.textSecondary)
-            Spacer()
-            CircleGlassButton(systemImage: "magnifyingglass", label: "Search", action: openSearch)
-        }
-        .padding(.top, 8)
+        Text(Date.now, format: .dateTime.weekday(.wide).day().month(.wide))
+            .font(LumenFont.body)
+            .foregroundStyle(LumenColors.textSecondary)
+            .padding(.top, 8)
     }
 
     private func heroView(_ channel: LiveChannel, loaded: LoadedLibrary, favourites: [LiveChannel]) -> some View {

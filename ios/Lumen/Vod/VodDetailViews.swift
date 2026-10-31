@@ -91,29 +91,36 @@ struct Backdrop: View {
     var wide = false
 
     var body: some View {
-        ZStack {
-            Color.clear
-            if let url, let parsed = URL(string: url) {
-                AsyncImage(url: parsed) { phase in
-                    if let image = phase.image {
-                        image.resizable().scaledToFill().transition(.opacity)
+        // The picture goes in an overlay of a fixed-size frame: a scaledToFill image laid out
+        // directly would make the whole page as wide as the picture (SwiftUI sizes a ZStack to
+        // its biggest child, unlike a UIImageView with clipsToBounds).
+        Color.clear
+            .frame(maxWidth: .infinity)
+            .frame(height: height)
+            .overlay {
+                if let url, let parsed = URL(string: url) {
+                    AsyncImage(url: parsed) { phase in
+                        if let image = phase.image {
+                            image.resizable().scaledToFill().transition(.opacity)
+                        }
                     }
                 }
             }
-            LinearGradient(
-                stops: [.init(color: .clear, location: 0.35), .init(color: LumenColors.background, location: 1)],
-                startPoint: .top, endPoint: .bottom
-            )
-            if wide {
+            .overlay {
                 LinearGradient(
-                    colors: [LumenColors.background.opacity(0.85), .clear],
-                    startPoint: .leading, endPoint: UnitPoint(x: 0.6, y: 0.5)
+                    stops: [.init(color: .clear, location: 0.35), .init(color: LumenColors.background, location: 1)],
+                    startPoint: .top, endPoint: .bottom
                 )
             }
-        }
-        .frame(height: height)
-        .frame(maxWidth: .infinity)
-        .clipped()
+            .overlay {
+                if wide {
+                    LinearGradient(
+                        colors: [LumenColors.background.opacity(0.85), .clear],
+                        startPoint: .leading, endPoint: UnitPoint(x: 0.6, y: 0.5)
+                    )
+                }
+            }
+            .clipped()
     }
 }
 
