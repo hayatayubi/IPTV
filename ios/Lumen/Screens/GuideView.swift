@@ -54,6 +54,9 @@ struct GuideView: View {
         .navigationTitle(wide ? "TV guide" : "")
         .navigationBarTitleDisplayMode(.inline)
         .playerCover($playing)
+        // iPhone: the guide takes the whole screen (back button to leave), so the details card
+        // has the bottom to itself instead of sitting under the floating tab bar.
+        .tabBarHidden(!wide)
         .task {
             // Moves the now line (and "starts in …") along.
             while !Task.isCancelled {

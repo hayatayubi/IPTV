@@ -12,6 +12,8 @@ struct RootView: View {
     /// keeps its scroll position and pushed pages, as a real tab bar does.
     @State private var opened: Set<AppTab> = [.live]
     @State private var searching = false
+    /// A full-screen page in the open tab (the iPhone TV guide) asked for the bar to go.
+    @State private var barHidden = false
 
     private var wide: Bool { UIDevice.current.userInterfaceIdiom == .pad && sizeClass == .regular }
 
@@ -24,17 +26,22 @@ struct RootView: View {
                         .opacity(tab == item ? 1 : 0)
                         .allowsHitTesting(tab == item)
                         .accessibilityHidden(tab != item)
+                        // Only the open tab may hide the bar.
+                        .transformPreference(TabBarHiddenKey.self) { if tab != item { $0 = false } }
                 }
             }
         }
         // safeAreaInset makes room for the bar: scroll views inside every tab end above it.
+        .onPreferenceChange(TabBarHiddenKey.self) { barHidden = $0 }
         .safeAreaInset(edge: wide ? .top : .bottom, spacing: 0) {
             if wide {
                 TopTabBar(tab: tab, select: select, search: { searching = true })
-            } else {
+            } else if !barHidden {
                 BottomTabBar(tab: tab, select: select, search: { searching = true })
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .animation(.easeOut(duration: 0.2), value: barHidden)
         .hideTopScrollEdgeEffect()
         // The keyboard covers the bar instead of pushing it up.
         .ignoresSafeArea(.keyboard, edges: .bottom)
@@ -247,5 +254,18 @@ struct StatusMessage: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// Set by a page that wants the whole screen on iPhone (`.tabBarHidden()`), like a pushed
+/// page hiding the system tab bar. The bar comes back when the page is popped.
+struct TabBarHiddenKey: PreferenceKey {
+    static let defaultValue = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
+}
+
+extension View {
+    func tabBarHidden(_ hidden: Bool = true) -> some View {
+        preference(key: TabBarHiddenKey.self, value: hidden)
     }
 }
