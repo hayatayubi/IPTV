@@ -61,6 +61,11 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
     2026-10-31: provider logos never fit, so none at all on iOS) (style A from the TV's Play-Store plan: palette colour by FNV-1a of the name, white name). Favourites:
     `PlaylistStore.favouriteKeys` (UserDefaults, playlist id → stable keys in order), hold/swipe a row to toggle,
     a card row at the top of Live TV, Edit sheet to reorder/remove, the player zaps within favourites.
+  - Movies/Series (not yet run): `PlaylistLoader.loadVod/movieInfo/seriesInfo` (shared, tested), loaded after the channels
+    for Xtream playlists. `ios/Lumen/Vod/`: tabs with Continue watching + category rows (30, See all grid), film and
+    series pages, `VodPlayerView` on VLCKit (SPM package `tylerjonesio/vlckit-spm` 3.6, LGPL; AVPlayer can't do mkv/DTS),
+    polled every 0.5 s. Progress in UserDefaults (`WatchProgress`, no stream URLs: they hold the password), saved every
+    15 s and on leaving, 95% = finished, under 30 s not kept. No My List or VOD search yet.
   - Not in Phase 1: Left sidebar and Right mini guide in the player (Phases 3/6), logos (Phase 4), settings/source editing (Phase 6).
 
 ## Decisions

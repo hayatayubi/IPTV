@@ -15,12 +15,20 @@ settings:
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_VERSION: "5.0"
+packages:
+  # VLC for films and episodes: plays .mkv and DTS/AC3 audio, which Apple's player can't.
+  # (A Swift Package build of the official VLCKit, LGPL 2.1.)
+  VLCKitSPM:
+    url: https://github.com/tylerjonesio/vlckit-spm
+    from: 3.6.0
 targets:
   Lumen:
     type: application
     platform: iOS
     sources:
       - path: Lumen
+    dependencies:
+      - package: VLCKitSPM
     # Builds the shared Kotlin code (../shared) into Shared.framework before Swift compiles.
     preBuildScripts:
       - name: Build shared Kotlin code

@@ -65,6 +65,14 @@ final class PlaylistStore {
     private(set) var favouriteKeys: [UUID: [String]] = [:]
     private let favouritesKey = "favourites"
 
+    /// Films and series per playlist (Xtream only), loaded after the channels.
+    private(set) var vodStates: [UUID: VodState] = [:]
+    /// Where you stopped in films and episodes, per playlist, keyed `m:<id>` / `e:<id>`.
+    private(set) var progress: [UUID: [String: WatchProgress]] = [:]
+    private let progressKey = "watchProgress"
+    @ObservationIgnored private var movieInfoCache: [String: MovieInfo] = [:]
+    @ObservationIgnored private var seriesInfoCache: [String: SeriesInfo] = [:]
+
     init() {
         if let data = UserDefaults.standard.data(forKey: defaultsKey),
            let saved = try? JSONDecoder().decode([Playlist].self, from: data) {
@@ -73,6 +81,10 @@ final class PlaylistStore {
         if let data = UserDefaults.standard.data(forKey: favouritesKey),
            let saved = try? JSONDecoder().decode([UUID: [String]].self, from: data) {
             favouriteKeys = saved
+        }
+        if let data = UserDefaults.standard.data(forKey: progressKey),
+           let saved = try? JSONDecoder().decode([UUID: [String: WatchProgress]].self, from: data) {
+            progress = saved
         }
         selectedID = playlists.first?.id
     }
@@ -85,6 +97,10 @@ final class PlaylistStore {
     func loadAll() async {
         for playlist in playlists where isIdle(playlist) {
             await refresh(playlist)
+        }
+        // Films and series after every playlist's channels, so Live TV is ready first.
+        for playlist in playlists where vodStates[playlist.id] == nil {
+            await loadVod(playlist)
         }
     }
 
@@ -141,12 +157,16 @@ final class PlaylistStore {
         states[playlist.id] = .loaded(LoadedLibrary(library))
         selectedID = playlist.id
         save()
+        Task { await loadVod(playlist) }
     }
 
     func remove(_ playlist: Playlist) {
         Keychain.delete(playlist.id.uuidString)
         favouriteKeys[playlist.id] = nil
         saveFavourites()
+        vodStates[playlist.id] = nil
+        progress[playlist.id] = nil
+        saveProgress()
         playlists.removeAll { $0.id == playlist.id }
         states[playlist.id] = nil
         if selectedID == playlist.id { selectedID = playlists.first?.id }
@@ -189,6 +209,92 @@ final class PlaylistStore {
     private func saveFavourites() {
         if let data = try? JSONEncoder().encode(favouriteKeys) {
             UserDefaults.standard.set(data, forKey: favouritesKey)
+        }
+    }
+
+    // MARK: Films and series
+
+    func vodState(of playlist: Playlist) -> VodState { vodStates[playlist.id] ?? .idle }
+
+    func loadVod(_ playlist: Playlist) async {
+        guard let creds = xtreamLogin(for: playlist) else {
+            vodStates[playlist.id] = .unavailable
+            return
+        }
+        vodStates[playlist.id] = .loading
+        do {
+            let vod = try await loader.loadVod(server: creds.server, username: creds.username, password: creds.password)
+            vodStates[playlist.id] = .loaded(VodIndex(vod))
+        } catch {
+            vodStates[playlist.id] = .failed(Self.message(for: error))
+        }
+    }
+
+    func movieInfo(_ movie: Movie, in playlist: Playlist) async throws -> MovieInfo {
+        if let cached = movieInfoCache[movie.id] { return cached }
+        guard let creds = xtreamLogin(for: playlist) else { throw PlaylistError(message: "No login.") }
+        do {
+            let info = try await loader.movieInfo(server: creds.server, username: creds.username, password: creds.password, movieId: movie.id)
+            movieInfoCache[movie.id] = info
+            return info
+        } catch {
+            throw PlaylistError(message: Self.message(for: error))
+        }
+    }
+
+    func seriesInfo(_ series: Series, in playlist: Playlist) async throws -> SeriesInfo {
+        if let cached = seriesInfoCache[series.id] { return cached }
+        guard let creds = xtreamLogin(for: playlist) else { throw PlaylistError(message: "No login.") }
+        do {
+            let info = try await loader.seriesInfo(server: creds.server, username: creds.username, password: creds.password, seriesId: series.id)
+            seriesInfoCache[series.id] = info
+            return info
+        } catch {
+            throw PlaylistError(message: Self.message(for: error))
+        }
+    }
+
+    private struct XtreamCredentials {
+        let server: String
+        let username: String
+        let password: String
+    }
+
+    private func xtreamLogin(for playlist: Playlist) -> XtreamCredentials? {
+        guard playlist.kind == .xtream, let login = login(for: playlist),
+              let server = login.server, let username = login.username, let password = login.password else { return nil }
+        return XtreamCredentials(server: server, username: username, password: password)
+    }
+
+    // MARK: Watch progress
+
+    func progress(_ key: String, in playlist: Playlist) -> WatchProgress? { progress[playlist.id]?[key] }
+
+    /// Saves where playback is. Like the TV: under 30 s isn't worth keeping.
+    func saveProgress(_ item: WatchProgress, in playlist: Playlist) {
+        guard item.position >= 30 || progress[playlist.id]?[item.key] != nil else { return }
+        progress[playlist.id, default: [:]][item.key] = item
+        saveProgress()
+    }
+
+    func removeProgress(_ key: String, in playlist: Playlist) {
+        progress[playlist.id]?[key] = nil
+        saveProgress()
+    }
+
+    /// Unfinished films (or series, one entry each), most recent first.
+    func continueWatching(_ kind: WatchProgress.Kind, in playlist: Playlist) -> [WatchProgress] {
+        let items = (progress[playlist.id] ?? [:]).values.filter { $0.kind == kind && !$0.finished }
+        var seenSeries = Set<String>()
+        return items.sorted { $0.updated > $1.updated }.filter { item in
+            guard let series = item.seriesId else { return true }
+            return seenSeries.insert(series).inserted
+        }
+    }
+
+    private func saveProgress() {
+        if let data = try? JSONEncoder().encode(progress) {
+            UserDefaults.standard.set(data, forKey: progressKey)
         }
     }
 

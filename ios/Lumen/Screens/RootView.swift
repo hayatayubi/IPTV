@@ -9,10 +9,10 @@ struct RootView: View {
                 LiveView()
             }
             Tab("Movies", systemImage: "film") {
-                EmptyTab(title: "Movies", message: "Films from your Xtream login show up here.")
+                VodTabView(kind: .movies)
             }
             Tab("Series", systemImage: "play.rectangle.on.rectangle") {
-                EmptyTab(title: "Series", message: "Series from your Xtream login show up here.")
+                VodTabView(kind: .series)
             }
             Tab("Settings", systemImage: "gearshape") {
                 SettingsView()

@@ -31,10 +31,18 @@ class XtreamServer internal constructor(
         }.buildString()
 
     /** `/live/<user>/<pass>/<id>.<ext>`. */
-    internal fun liveStreamUrl(streamId: String, extension: String): String =
+    internal fun liveStreamUrl(streamId: String, extension: String): String = mediaUrl("live", streamId, extension)
+
+    /** A film: `/movie/<user>/<pass>/<id>.<ext>`. */
+    internal fun movieUrl(streamId: String, extension: String): String = mediaUrl("movie", streamId, extension)
+
+    /** A series episode: `/series/<user>/<pass>/<id>.<ext>`. */
+    internal fun episodeUrl(episodeId: String, extension: String): String = mediaUrl("series", episodeId, extension)
+
+    private fun mediaUrl(kind: String, id: String, extension: String): String =
         URLBuilder(base).apply {
             // Encoded like OkHttp's addPathSegment on Android: a '/' in a password becomes %2F.
-            val segments = listOf("live", this@XtreamServer.username, this@XtreamServer.password, "$streamId.$extension")
+            val segments = listOf(kind, this@XtreamServer.username, this@XtreamServer.password, "$id.$extension")
             appendEncodedPathSegments(segments.map { it.encodeURLParameter() })
         }.buildString()
 

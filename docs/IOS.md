@@ -72,7 +72,14 @@ iOS compiler once. The step shows as "Build shared Kotlin code" in Xcode's build
   appear as big cards at the top of Live TV; tap one to watch and swipe to zap through favourites.
   **Edit** reorders (drag) or removes them. They survive refreshes, like on the TV.
 
-Channels load fresh each time the app starts (no saved copy on the phone yet).
+- Movies and Series (Xtream logins): they load by themselves after the channels, from the same
+  saved login. Rows of posters per category, See all (with search), film page (Play / Resume from
+  … / Start over), series page (seasons, episodes, Resume S1 · E3). Films play with VLC, so .mkv
+  and DTS audio work: tap for controls, double-tap left/right = 10 s, captions button = audio and
+  subtitles, Next episode. Where you stopped is saved (Continue watching; hold to remove).
+
+Channels, films and series load fresh each time the app starts (no saved copy on the phone yet).
+The first build after VLC was added downloads it (Xcode → File → Packages if it says it's missing).
 
 ## App Store notes (for later)
 

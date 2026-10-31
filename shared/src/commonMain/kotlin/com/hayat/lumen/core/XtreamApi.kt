@@ -72,6 +72,33 @@ internal class XtreamApi(private val http: HttpClient) {
             )
         }.toList()
 
+    suspend fun categories(server: XtreamServer, action: String): List<XtreamCategory> =
+        decodeArray(server, action, RawCategory.serializer()).mapNotNull { c ->
+            val id = c.id.lenient() ?: return@mapNotNull null
+            XtreamCategory(id, c.name.lenient()?.trim()?.takeIf { it.isNotEmpty() } ?: id)
+        }.toList()
+
+    suspend fun movies(server: XtreamServer): List<RawMovie> = decodeArray(server, "get_vod_streams", RawMovie.serializer()).toList()
+
+    suspend fun series(server: XtreamServer): List<RawSeries> = decodeArray(server, "get_series", RawSeries.serializer()).toList()
+
+    /** `get_vod_info`: the `info` object, or null. */
+    suspend fun movieInfo(server: XtreamServer, movieId: String): JsonObject? =
+        (parse(server, "get_vod_info", mapOf("vod_id" to movieId)) as? JsonObject)?.get("info") as? JsonObject
+
+    /** `get_series_info`: the whole answer (seasons, info, episodes), or null. */
+    suspend fun seriesInfo(server: XtreamServer, seriesId: String): JsonObject? =
+        parse(server, "get_series_info", mapOf("series_id" to seriesId)) as? JsonObject
+
+    private suspend fun parse(server: XtreamServer, action: String, extra: Map<String, String>): JsonElement? {
+        val text = fetch(server, action, extra).decodeToString()
+        return try {
+            json.parseToJsonElement(text)
+        } catch (e: Exception) {
+            throw LoadException("${server.host} sent something Lumen couldn't read.", e)
+        }
+    }
+
     /**
      * Reads a JSON array one object at a time, so a 50k-channel list never exists as one big
      * JSON tree (the download itself is held as bytes). Anything that isn't an array is empty.
@@ -96,9 +123,9 @@ internal class XtreamApi(private val http: HttpClient) {
         }
     }
 
-    private suspend fun fetch(server: XtreamServer, action: String?): ByteArray {
+    private suspend fun fetch(server: XtreamServer, action: String?, extra: Map<String, String> = emptyMap()): ByteArray {
         val response: HttpResponse = try {
-            http.get(server.apiUrl(action))
+            http.get(server.apiUrl(action, extra))
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             throw LoadException("Couldn't reach ${server.host}. Check the address and your connection.", e)
@@ -116,6 +143,31 @@ internal class XtreamApi(private val http: HttpClient) {
     )
 
     @Serializable
+    class RawMovie(
+        @SerialName("stream_id") val streamId: JsonElement? = null,
+        val name: JsonElement? = null,
+        @SerialName("category_id") val categoryId: JsonElement? = null,
+        @SerialName("stream_icon") val icon: JsonElement? = null,
+        val rating: JsonElement? = null,
+        @SerialName("container_extension") val extension: JsonElement? = null,
+        val added: JsonElement? = null,
+    )
+
+    @Serializable
+    class RawSeries(
+        @SerialName("series_id") val seriesId: JsonElement? = null,
+        val name: JsonElement? = null,
+        @SerialName("category_id") val categoryId: JsonElement? = null,
+        val cover: JsonElement? = null,
+        @SerialName("backdrop_path") val backdrop: JsonElement? = null,
+        val plot: JsonElement? = null,
+        val genre: JsonElement? = null,
+        val releaseDate: JsonElement? = null,
+        @SerialName("release_date") val releaseDate2: JsonElement? = null,
+        val rating: JsonElement? = null,
+    )
+
+    @Serializable
     private class RawStream(
         @SerialName("stream_id") val streamId: JsonElement? = null,
         val name: JsonElement? = null,
@@ -129,5 +181,9 @@ internal class XtreamApi(private val http: HttpClient) {
 /** A JSON string, number or boolean as text; null for null, objects and arrays. */
 internal fun JsonElement?.lenient(): String? =
     (this as? JsonPrimitive)?.takeUnless { it is JsonNull }?.content
+
+/** The first string of an array (`backdrop_path` is a list of URLs), or a plain string. */
+internal fun JsonElement?.firstString(): String? =
+    if (this is JsonArray) firstNotNullOfOrNull { it.lenient().nonBlank() } else lenient()
 
 internal fun String?.nonBlank(): String? = this?.trim()?.takeIf { it.isNotEmpty() }

@@ -7,6 +7,9 @@ import com.hayat.lumen.data.m3u.StableKeys
 import com.hayat.lumen.util.CategoryNames
 import com.hayat.lumen.util.ChannelNames
 import com.hayat.lumen.util.UrlRedaction
+import com.hayat.lumen.util.VodNames
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
@@ -53,6 +56,120 @@ class PlaylistLoader internal constructor(private val http: HttpClient) {
         val entries = parser.entries(text.lineSequence()).filter { it.kind == EntryKind.LIVE }.toList()
         if (entries.isEmpty()) throw LoadException("No channels found in that playlist.")
         return build(entries, categoryOrder = emptyList(), epgUrl = parser.header.epgUrl, skipped = parser.skipped)
+    }
+
+    /** Films and series for an Xtream login (M3U playlists have none). */
+    @Throws(Exception::class)
+    suspend fun loadVod(server: String, username: String, password: String): VodLibrary {
+        val login = XtreamServer.of(server, username, password)
+            ?: throw LoadException("Enter a server address, username and password.")
+        val movieCategories = xtream.categories(login, "get_vod_categories")
+        val movies = xtream.movies(login).mapNotNull { m ->
+            val id = m.streamId.lenient() ?: return@mapNotNull null
+            val raw = m.name.lenient().nonBlank() ?: return@mapNotNull null
+            val name = VodNames.display(raw)
+            Movie(
+                id = id,
+                name = raw,
+                title = name.title,
+                year = name.year,
+                quality = name.tags.firstOrNull { it == "4K" },
+                categoryId = m.categoryId.lenient().orEmpty(),
+                posterUrl = m.icon.lenient().nonBlank(),
+                rating = m.rating.lenient()?.toDoubleOrNull()?.takeIf { it > 0 },
+                streamUrl = login.movieUrl(id, m.extension.lenient().nonBlank() ?: "mp4"),
+                added = m.added.lenient()?.toLongOrNull(),
+            )
+        }
+        val seriesCategories = xtream.categories(login, "get_series_categories")
+        val series = xtream.series(login).mapNotNull { s ->
+            val id = s.seriesId.lenient() ?: return@mapNotNull null
+            val raw = s.name.lenient().nonBlank() ?: return@mapNotNull null
+            val name = VodNames.display(raw)
+            val released = s.releaseDate.lenient().nonBlank() ?: s.releaseDate2.lenient().nonBlank()
+            Series(
+                id = id,
+                name = raw,
+                title = name.title,
+                year = name.year ?: released?.take(4)?.toIntOrNull(),
+                categoryId = s.categoryId.lenient().orEmpty(),
+                posterUrl = s.cover.lenient().nonBlank(),
+                backdropUrl = s.backdrop.firstString().nonBlank(),
+                plot = s.plot.lenient().nonBlank(),
+                genre = s.genre.lenient().nonBlank(),
+                rating = s.rating.lenient()?.toDoubleOrNull()?.takeIf { it > 0 },
+            )
+        }
+        return VodLibrary(
+            vodCategories(movieCategories, movies.groupingBy { it.categoryId }.eachCount()),
+            movies,
+            vodCategories(seriesCategories, series.groupingBy { it.categoryId }.eachCount()),
+            series,
+        )
+    }
+
+    /** In the provider's order, only categories that have something in them. */
+    private fun vodCategories(categories: List<XtreamCategory>, counts: Map<String, Int>): List<VodCategory> =
+        categories.filter { (counts[it.id] ?: 0) > 0 }.map { c ->
+            val display = CategoryNames.display(c.name)
+            VodCategory(c.id, c.name, display.title, display.tags.firstOrNull { it == "4K" }, counts.getValue(c.id))
+        }
+
+    /** One film's details. */
+    @Throws(Exception::class)
+    suspend fun movieInfo(server: String, username: String, password: String, movieId: String): MovieInfo {
+        val login = XtreamServer.of(server, username, password) ?: throw LoadException("This playlist's login is incomplete.")
+        val info = xtream.movieInfo(login, movieId)
+        return MovieInfo(
+            plot = info?.get("plot").lenient().nonBlank() ?: info?.get("description").lenient().nonBlank(),
+            genre = info?.get("genre").lenient().nonBlank(),
+            director = info?.get("director").lenient().nonBlank(),
+            cast = info?.get("cast").lenient().nonBlank() ?: info?.get("actors").lenient().nonBlank(),
+            durationSecs = info?.get("duration_secs").lenient()?.toLongOrNull()?.takeIf { it > 0 },
+            releaseDate = info?.get("releasedate").lenient().nonBlank(),
+            backdropUrl = info?.get("backdrop_path").firstString().nonBlank(),
+            ageRating = info?.get("age").lenient().nonBlank(),
+        )
+    }
+
+    /** A series' seasons and episodes. */
+    @Throws(Exception::class)
+    suspend fun seriesInfo(server: String, username: String, password: String, seriesId: String): SeriesInfo {
+        val login = XtreamServer.of(server, username, password) ?: throw LoadException("This playlist's login is incomplete.")
+        val root = xtream.seriesInfo(login, seriesId)
+        val episodes = ArrayList<Episode>()
+        fun read(e: JsonObject, seasonKey: Int?) {
+            val id = e["id"].lenient() ?: return
+            val info = e["info"] as? JsonObject
+            episodes += Episode(
+                id = id,
+                season = e["season"].lenient()?.toIntOrNull() ?: seasonKey ?: 1,
+                episode = e["episode_num"].lenient()?.toIntOrNull() ?: 0,
+                title = e["title"].lenient().nonBlank(),
+                durationSecs = info?.get("duration_secs").lenient()?.toLongOrNull()?.takeIf { it > 0 },
+                imageUrl = info?.get("movie_image").lenient().nonBlank(),
+                plot = info?.get("plot").lenient().nonBlank(),
+                streamUrl = login.episodeUrl(id, e["container_extension"].lenient().nonBlank() ?: "mp4"),
+            )
+        }
+        // Usually {"1": [...], "2": [...]}; a few panels send [[...], [...]].
+        when (val all = root?.get("episodes")) {
+            is JsonObject -> all.forEach { (season, list) ->
+                (list as? JsonArray)?.forEach { (it as? JsonObject)?.let { e -> read(e, season.toIntOrNull()) } }
+            }
+            is JsonArray -> all.forEach { list ->
+                (list as? JsonArray)?.forEach { (it as? JsonObject)?.let { e -> read(e, null) } }
+            }
+            else -> Unit
+        }
+        val sorted = episodes.sortedWith(compareBy({ it.season }, { it.episode }))
+        val info = root?.get("info") as? JsonObject
+        return SeriesInfo(
+            seasons = sorted.map { it.season }.distinct(),
+            episodes = sorted,
+            cast = info?.get("cast").lenient().nonBlank(),
+            director = info?.get("director").lenient().nonBlank(),
+        )
     }
 
     /** True for `get.php` / `player_api.php` links, which carry an Xtream login. */
