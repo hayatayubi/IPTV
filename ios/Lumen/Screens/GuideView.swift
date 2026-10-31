@@ -528,12 +528,14 @@ private struct DetailsCard: View {
 
 private extension View {
     /// Keeps a view at the left edge of the visible grid while the programmes scroll sideways
-    /// under it, bounce included. Done in `visualEffect`, which runs as each frame is drawn: an
-    /// offset from the scroll position in @State arrives a frame late, so the programmes slid
-    /// over the channel tiles while dragging (Hayat 2026-10-31).
+    /// under it. Done in `visualEffect`, which runs as each frame is drawn (an offset from the
+    /// scroll position in @State arrives a frame late). Never pushed left of the grid's own
+    /// start: when you pull past the first half hour, the grid springs right and the channel
+    /// column goes with it. Pinning it there too put it outside the grid, which cut the tiles off
+    /// (Hayat's recording 2026-10-31).
     func pinnedToLeadingEdge() -> some View {
         visualEffect { content, geo in
-            content.offset(x: -geo.frame(in: .scrollView(axis: .horizontal)).minX)
+            content.offset(x: max(0, -geo.frame(in: .scrollView(axis: .horizontal)).minX))
         }
     }
 }
