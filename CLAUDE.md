@@ -50,6 +50,9 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
     login / Hide / Remove, plus Add playlist), TV guide, Live categories (OK hide, hold OK rename), Movie and Series
     categories (same), Ratings (the user's OMDb key), Updates, About. Live's Categories and the guide's Guide settings
     open it on their section.
+- **iPhone/iPad app.** Started 2026-10-31 (branch `claude/project-thread-avhbdn`). Phase 1: empty SwiftUI app in `ios/`
+  (XcodeGen `project.yml`, the .xcodeproj isn't committed; tabs, Add playlist form not saving yet, Settings → Test video
+  playback). Setup in `docs/IOS.md`. Not yet run on a device. Plan: shared Kotlin Multiplatform core next, SwiftUI screens.
   - Not in Phase 1: Left sidebar and Right mini guide in the player (Phases 3/6), logos (Phase 4), settings/source editing (Phase 6).
 
 ## Decisions
@@ -157,6 +160,10 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
   (Hayat didn't want their name in links). Public page: https://lumen-tv.github.io (repo `lumen-tv/lumen-tv.github.io`),
   `/get` forwards to the newest APK. `PRIVACY.md` = privacy policy. The brand logo tiles stay in the public build (Hayat's choice
   2026-10-28; they'd have to go for Google Play).
+- **iOS** (`ios/`): SwiftUI, iOS 18+, iPhone + iPad, bundle id `com.hayat.lumen`. Built on Hayat's Mac with Xcode
+  (cloud sessions are Linux: they can't build or check Swift). Hayat uses a free Apple ID for now (installs expire after
+  7 days). App Store rules for the iOS build: no bundled content or provider links, no `BrandLogos` tiles, ratings as plain
+  text, no self-updater, http allowed via ATS (`NSAllowsArbitraryLoads`), passwords in the Keychain, `PrivacyInfo.xcprivacy`.
 - Shared debug keystore in `keystore/`: signs debug builds and local release builds, so cloud and laptop builds install
   over each other. It can't install over a published (privately signed) release, or the reverse.
 - Backups disabled (`allowBackup=false` + `data_extraction_rules.xml`): credentials stay on the device.
