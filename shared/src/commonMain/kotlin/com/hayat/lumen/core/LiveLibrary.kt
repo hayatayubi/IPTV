@@ -1,6 +1,9 @@
 package com.hayat.lumen.core
 
+import kotlinx.serialization.Serializable
+
 /** A playlist's live channels, ready to show: what the iPhone app lists in Live TV. */
+@Serializable
 class LiveLibrary(
     /** In the provider's order (Xtream), or first-seen order (M3U). Only categories with channels. */
     val categories: List<LiveCategory>,
@@ -11,6 +14,7 @@ class LiveLibrary(
     val skipped: Int,
 )
 
+@Serializable
 class LiveCategory(
     /** The provider's name, kept as the key (renames and hiding key on it, like on Android). */
     val name: String,
@@ -19,6 +23,7 @@ class LiveCategory(
     val channelCount: Int,
 )
 
+@Serializable
 class LiveChannel(
     /** `StableKeys` key: the same across refreshes, for favourites later. */
     val key: String,

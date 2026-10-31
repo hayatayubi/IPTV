@@ -1,6 +1,9 @@
 package com.hayat.lumen.core
 
+import kotlinx.serialization.Serializable
+
 /** One programme in the TV guide. Times are epoch seconds (Swift: `Int64`). */
+@Serializable
 class Programme(
     val start: Long,
     val stop: Long,
@@ -19,7 +22,7 @@ class NowNext(val now: Programme?, val next: Programme?)
  * A playlist's TV guide: programmes per channel, keyed by the channel's `tvg-id` (lowercased,
  * as on the TV app), each list sorted by start time. Only now − 2 h … now + 36 h is kept.
  */
-class Guide internal constructor(private val byChannel: Map<String, List<Programme>>) {
+class Guide internal constructor(internal val byChannel: Map<String, List<Programme>>) {
 
     /** How many of the playlist's channels have guide info. */
     val channelCount: Int get() = byChannel.size

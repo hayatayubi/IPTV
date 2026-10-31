@@ -1,8 +1,9 @@
 import Shared
 import SwiftUI
 
-/// The TV guide: channels down the left, time across, a white line at now. Drag in both
-/// directions; tap a programme to see its details, double-tap it to watch that channel
+/// The TV guide: channels down the left, time across, a white line at now. A drag scrolls
+/// either up/down or sideways, never both (Hayat 2026-10-31: the free 2-way pan felt like an
+/// overlay); the channel column and the times stay put. Tap a programme to see its details, double-tap it to watch that channel
 /// (Hayat 2026-10-31: no Watch button on iPhone). Opened from Home's "TV guide".
 ///
 /// iPhone: a details card slides up over the grid. iPad: the TV's glass panel sits above the
@@ -16,8 +17,9 @@ struct GuideView: View {
     @State private var position = ScrollPosition(edge: .leading)
     @State private var scrollX: CGFloat = 0
     @State private var now = Date.now
-    /// The grid starts at the last half hour and runs 30 hours (the guide keeps 36).
-    @State private var windowStart = GuideView.halfHour(before: .now.addingTimeInterval(-30 * 60))
+    /// The grid starts at the last half hour, so it opens on what's on now, and runs 30 hours
+    /// (the guide keeps 36).
+    @State private var windowStart = GuideView.halfHour(before: .now)
     @State private var preview = LivePlayerModel(muted: true)
     @State private var previewTask: Task<Void, Never>?
 
@@ -87,14 +89,16 @@ struct GuideView: View {
             }
             status(playlist)
             grid(rows: rows, guide: guide)
-        }
-        .overlay(alignment: .bottom) {
-            if !wide, let selection = selected, let channel = rows.first(where: { $0.key == selection.channelKey }) {
-                DetailsCard(channel: channel, programme: programme(selection, guide), now: now) { selected = nil }
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 8)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
+                // Part of the layout, above the tab bar: the grid ends where the card starts.
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if !wide, let selection = selected, let channel = rows.first(where: { $0.key == selection.channelKey }) {
+                        DetailsCard(channel: channel, programme: programme(selection, guide), now: now) { selected = nil }
+                            .padding(.horizontal, 12)
+                            .padding(.top, 8)
+                            .padding(.bottom, 8)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                }
         }
         .animation(.easeOut(duration: 0.2), value: selected)
         .onChange(of: selected) { _, selection in
@@ -184,33 +188,44 @@ struct GuideView: View {
 
     // MARK: Grid
 
+    /// Two nested scroll views instead of one free 2-axis one: sideways outside (the times scroll
+    /// with the programmes), up/down inside (the times stay on top). iOS gives each drag to one
+    /// of them, so the grid moves in one direction at a time like a built-in list.
+    /// Compose note: SwiftUI has no LazyColumn-in-LazyRow problem here; the inner LazyVStack
+    /// stays lazy because the outer sideways scroll gives it a fixed height.
     private func grid(rows: [LiveChannel], guide: Guide?) -> some View {
         let totalWidth = CGFloat(hours * 60) * ppm
         let leading = (wide ? 48 : 20) + tileWidth + gap
-        return ScrollView([.horizontal, .vertical]) {
-            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                Section {
-                    ForEach(rows, id: \.key) { channel in
-                        row(channel, guide: guide, leading: leading, totalWidth: totalWidth)
+        return ScrollView(.horizontal) {
+            VStack(alignment: .leading, spacing: 0) {
+                ruler(leading: leading, totalWidth: totalWidth)
+                ScrollView(.vertical) {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(rows, id: \.key) { channel in
+                            row(channel, guide: guide, leading: leading, totalWidth: totalWidth)
+                        }
                     }
-                } header: {
-                    ruler(leading: leading, totalWidth: totalWidth)
+                    .padding(.bottom, 16)
                 }
+                .scrollIndicators(.hidden)
+                .scrollBounceBehavior(.basedOnSize, axes: .vertical)
             }
             .frame(width: leading + totalWidth, alignment: .leading)
             .overlay(alignment: .topLeading) { nowLine(leading: leading) }
-            .padding(.bottom, wide ? 24 : 200) // room to scroll the last rows above the details card
+            .clipped()
         }
         .scrollIndicators(.hidden)
         .scrollPosition($position)
         .onScrollGeometryChange(for: CGFloat.self) { geo in
             geo.contentOffset.x + geo.contentInsets.leading
         } action: { _, x in
-            scrollX = max(0, x)
+            // Not clamped: while the grid springs back at either end, the channel column and
+            // its backdrop stay exactly where they are.
+            scrollX = x
         }
     }
 
-    /// Times along the top, every half hour. Pinned while scrolling down.
+    /// Times along the top, every half hour. Rows scroll up under it.
     private func ruler(leading: CGFloat, totalWidth: CGFloat) -> some View {
         let slots = Int(hours * 2)
         return ZStack(alignment: .topLeading) {
@@ -225,8 +240,6 @@ struct GuideView: View {
             columnBackdrop(width: leading, height: 26)
         }
         .frame(width: leading + totalWidth, height: 26, alignment: .topLeading)
-        // Rows scroll under the pinned times.
-        .background(LumenColors.background.opacity(0.9))
     }
 
     /// Solid behind the channel column (and the corner above it), following the sideways scroll.
@@ -254,11 +267,11 @@ struct GuideView: View {
         let from = Int64(windowStart.timeIntervalSince1970)
         let to = from + Int64(hours * 3600)
         let programmes = guide?.between(tvgId: channel.tvgId, from: from, to: to) ?? []
-        let visibleLeft = leading + scrollX
+        let visibleLeft = leading + max(0, scrollX)
         return ZStack(alignment: .topLeading) {
             if programmes.isEmpty {
                 cell(title: guide == nil ? "" : "No guide info", time: nil, kind: .none,
-                     x: leading, width: totalWidth, textShift: scrollX)
+                     x: leading, width: totalWidth, textShift: max(0, scrollX))
             }
             ForEach(programmes, id: \.start) { p in
                 let x = leading + CGFloat(Double(p.start - from) / 60) * ppm

@@ -1,6 +1,9 @@
 package com.hayat.lumen.core
 
+import kotlinx.serialization.Serializable
+
 /** A playlist's films and series (Xtream only), ready to show in the iPhone app's tabs. */
+@Serializable
 class VodLibrary(
     val movieCategories: List<VodCategory>,
     val movies: List<Movie>,
@@ -8,6 +11,7 @@ class VodLibrary(
     val series: List<Series>,
 )
 
+@Serializable
 class VodCategory(
     val id: String,
     /** The provider's name. */
@@ -19,6 +23,7 @@ class VodCategory(
     val count: Int,
 )
 
+@Serializable
 class Movie(
     val id: String,
     val name: String,
@@ -36,6 +41,7 @@ class Movie(
     val added: Long?,
 )
 
+@Serializable
 class Series(
     val id: String,
     val name: String,

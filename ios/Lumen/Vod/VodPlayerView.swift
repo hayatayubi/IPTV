@@ -237,6 +237,8 @@ final class VodPlayerModel {
     private(set) var failed = false
     private(set) var ended = false
     @ObservationIgnored private var timer: Timer?
+    /// Whether the remembered audio/subtitle language has been picked for this film yet.
+    @ObservationIgnored private var appliedPreferences = false
 
     init() {
         try? AVAudioSessionHelper.activate()
@@ -255,6 +257,7 @@ final class VodPlayerModel {
         failed = false
         ended = false
         isBuffering = true
+        appliedPreferences = false
         player.play()
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
@@ -267,6 +270,10 @@ final class VodPlayerModel {
         if time > 0 { position = time }
         if let length = player.media?.length.intValue, length > 0 { duration = Double(length) / 1000 }
         isPlaying = player.isPlaying
+        if !appliedPreferences, player.isPlaying, !audioTracks().isEmpty {
+            appliedPreferences = true
+            applyPreferences()
+        }
         switch player.state {
         case .error: failed = true
         case .ended: if !ended { ended = true }
@@ -304,8 +311,44 @@ final class VodPlayerModel {
         tracks(names: player.videoSubTitlesNames, ids: player.videoSubTitlesIndexes, current: player.currentVideoSubTitleIndex)
     }
 
-    func selectAudio(_ id: Int32) { player.currentAudioTrackIndex = id }
-    func selectSubtitle(_ id: Int32) { player.currentVideoSubTitleIndex = id }
+    /// Picking a track also remembers it for the next film or episode.
+    func selectAudio(_ id: Int32) {
+        player.currentAudioTrackIndex = id
+        if let name = audioTracks().first(where: { $0.id == id })?.name {
+            UserDefaults.standard.set(name, forKey: Self.audioKey)
+        }
+    }
+
+    func selectSubtitle(_ id: Int32) {
+        player.currentVideoSubTitleIndex = id
+        if let name = subtitleTracks().first(where: { $0.id == id })?.name {
+            UserDefaults.standard.set(name, forKey: Self.subtitleKey)
+        }
+    }
+
+    private static let audioKey = "preferredAudioTrack"
+    private static let subtitleKey = "preferredSubtitleTrack"
+
+    /// Chooses the tracks last picked by hand: the same name, else the same language
+    /// ("English - [English]" matches "English 5.1"). Subtitles "Off" stays off.
+    private func applyPreferences() {
+        if let wanted = UserDefaults.standard.string(forKey: Self.audioKey),
+           let track = Self.match(wanted, in: audioTracks()), !track.selected {
+            player.currentAudioTrackIndex = track.id
+        }
+        if let wanted = UserDefaults.standard.string(forKey: Self.subtitleKey),
+           let track = Self.match(wanted, in: subtitleTracks()), !track.selected {
+            player.currentVideoSubTitleIndex = track.id
+        }
+    }
+
+    static func match(_ wanted: String, in tracks: [Track]) -> Track? {
+        if let exact = tracks.first(where: { $0.name == wanted }) { return exact }
+        guard wanted != "Off",
+              let language = wanted.lowercased().split(whereSeparator: { !$0.isLetter }).first.map(String.init),
+              language.count >= 3 else { return nil }
+        return tracks.first { $0.id != -1 && $0.name.lowercased().contains(language) }
+    }
 
     private func tracks(names: [Any], ids: [Any], current: Int32) -> [Track] {
         zip(names, ids).compactMap { name, id in

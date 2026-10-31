@@ -19,6 +19,9 @@ private struct PlaylistLogin: Codable {
     var username: String?
     var password: String?
     var link: String?
+    /// A guide link the user typed (Settings → playlist → TV guide). Kept here, not in plain
+    /// settings, because such links can hold a login too.
+    var guideUrl: String?
 }
 
 /// A playlist's channels, loaded from the provider by the shared Kotlin code.
@@ -77,6 +80,12 @@ final class PlaylistStore {
     /// Films and series saved to My List, per playlist, newest first (provider ids survive refreshes).
     private(set) var myList: [UUID: [MyListItem]] = [:]
     private let myListKey = "myList"
+    /// Hidden categories per playlist, keyed `l:<name>` (live), `m:<id>` (films), `s:<id>` (series).
+    private(set) var hiddenCategories: [UUID: Set<String>] = [:]
+    /// The user's names for categories, same keys. Display only: the provider's name stays the key.
+    private(set) var categoryLabels: [UUID: [String: String]] = [:]
+    private let hiddenKey = "hiddenCategories"
+    private let labelsKey = "categoryLabels"
     @ObservationIgnored private var movieInfoCache: [String: MovieInfo] = [:]
     @ObservationIgnored private var seriesInfoCache: [String: SeriesInfo] = [:]
 
@@ -93,6 +102,14 @@ final class PlaylistStore {
            let saved = try? JSONDecoder().decode([UUID: [String: WatchProgress]].self, from: data) {
             progress = saved
         }
+        if let data = UserDefaults.standard.data(forKey: hiddenKey),
+           let saved = try? JSONDecoder().decode([UUID: Set<String>].self, from: data) {
+            hiddenCategories = saved
+        }
+        if let data = UserDefaults.standard.data(forKey: labelsKey),
+           let saved = try? JSONDecoder().decode([UUID: [String: String]].self, from: data) {
+            categoryLabels = saved
+        }
         if let data = UserDefaults.standard.data(forKey: myListKey),
            let saved = try? JSONDecoder().decode([UUID: [MyListItem]].self, from: data) {
             myList = saved
@@ -104,18 +121,71 @@ final class PlaylistStore {
 
     func state(of playlist: Playlist) -> LoadState { states[playlist.id] ?? .idle }
 
-    /// Loads every playlist that hasn't been loaded yet (at launch).
+    /// At launch: shows what was saved on the phone straight away, then refreshes whatever is
+    /// missing or old in the background (like the TV app: channels and guide after 12 h, films
+    /// and series after 24 h). Pull to refresh always reloads.
     func loadAll() async {
-        for playlist in playlists where isIdle(playlist) {
+        for playlist in playlists {
+            let id = playlist.id
+            if isIdle(playlist), let live = await Self.background({ LibraryCache.shared.loadLive(path: Self.cachePath(id, "live")) }) {
+                states[id] = .loaded(LoadedLibrary(live))
+            }
+            if guideStates[id] == nil, let guide = await Self.background({ LibraryCache.shared.loadGuide(path: Self.cachePath(id, "guide")) }) {
+                guideStates[id] = .loaded(guide)
+            }
+            if vodStates[id] == nil, let vod = await Self.background({ LibraryCache.shared.loadVod(path: Self.cachePath(id, "vod")) }) {
+                vodStates[id] = .loaded(VodIndex(vod))
+            }
+        }
+        for playlist in playlists where isIdle(playlist) || Self.isStale(playlist.id, "live", hours: 12) {
             await refresh(playlist)
         }
         // The guide alongside films and series (each waits on the network, not on the other).
-        for playlist in playlists where guideStates[playlist.id] == nil {
+        for playlist in playlists where guideStates[playlist.id] == nil || Self.isStale(playlist.id, "guide", hours: 12) {
             Task { await loadGuide(playlist) }
         }
-        // Films and series after every playlist's channels, so Live TV is ready first.
-        for playlist in playlists where vodStates[playlist.id] == nil {
+        for playlist in playlists where vodStates[playlist.id] == nil || Self.isStale(playlist.id, "vod", hours: 24) {
             await loadVod(playlist)
+        }
+    }
+
+    /// Channels, guide, films and series, all again (pull to refresh, Settings → Refresh).
+    func refreshEverything(_ playlist: Playlist) async {
+        await refresh(playlist)
+        async let guide: Void = loadGuide(playlist)
+        async let vod: Void = loadVod(playlist)
+        _ = await (guide, vod)
+    }
+
+    // MARK: Saved on the phone
+
+    /// `Library/Caches/Lumen/<playlist>-live.json` etc. (Caches: iOS may clear it when space is
+    /// short, which only means a slower next start.)
+    nonisolated static func cachePath(_ id: UUID, _ kind: String) -> String {
+        let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("Lumen", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("\(id.uuidString)-\(kind).json").path
+    }
+
+    nonisolated static func isStale(_ id: UUID, _ kind: String, hours: Double) -> Bool {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: cachePath(id, kind)),
+              let modified = attributes[.modificationDate] as? Date else { return true }
+        return Date.now.timeIntervalSince(modified) > hours * 3600
+    }
+
+    /// Runs file work off the main thread (big playlists take a moment to read and write).
+    nonisolated static func background<T>(_ work: @escaping () -> T) async -> T {
+        await Task.detached(priority: .utility) { work() }.value
+    }
+
+    private func saveCache(_ id: UUID, _ kind: String, _ save: @escaping (String) throws -> Void) {
+        let path = Self.cachePath(id, kind)
+        Task.detached(priority: .utility) { try? save(path) }
+    }
+
+    private func deleteCache(_ id: UUID) {
+        for kind in ["live", "guide", "vod"] {
+            try? FileManager.default.removeItem(atPath: Self.cachePath(id, kind))
         }
     }
 
@@ -129,13 +199,21 @@ final class PlaylistStore {
             states[playlist.id] = .failed("The login for this playlist is missing. Remove it and add it again.")
             return
         }
-        states[playlist.id] = .loading
+        // Keeps showing what's there while it reloads; only an empty screen shows "Loading".
+        let hadData = isLoaded(playlist)
+        if !hadData { states[playlist.id] = .loading }
         do {
             let library = try await load(login)
             states[playlist.id] = .loaded(LoadedLibrary(library))
+            saveCache(playlist.id, "live") { try LibraryCache.shared.saveLive(library: library, path: $0) }
         } catch {
-            states[playlist.id] = .failed(Self.message(for: error))
+            if !hadData { states[playlist.id] = .failed(Self.message(for: error)) }
         }
+    }
+
+    private func isLoaded(_ playlist: Playlist) -> Bool {
+        if case .loaded = state(of: playlist) { return true }
+        return false
     }
 
     /// Checks the login by loading the channels, and saves the playlist only if that works.
@@ -162,14 +240,13 @@ final class PlaylistStore {
         } catch {
             throw PlaylistError(message: Self.message(for: error))
         }
-        let host = URL(string: login.server.map { $0.contains("://") ? $0 : "http://\($0)" } ?? login.link ?? "")?.host() ?? "Playlist"
+        let host = Self.host(of: login)
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         let playlist = Playlist(id: UUID(), name: trimmed.isEmpty ? host : trimmed, kind: kind, host: host)
-        if let data = try? JSONEncoder().encode(login) {
-            Keychain.save(data, for: playlist.id.uuidString)
-        }
+        store(login, for: playlist)
         playlists.append(playlist)
         states[playlist.id] = .loaded(LoadedLibrary(library))
+        saveCache(playlist.id, "live") { try LibraryCache.shared.saveLive(library: library, path: $0) }
         selectedID = playlist.id
         save()
         Task { await loadGuide(playlist) }
@@ -186,6 +263,10 @@ final class PlaylistStore {
         saveProgress()
         myList[playlist.id] = nil
         saveMyList()
+        hiddenCategories[playlist.id] = nil
+        categoryLabels[playlist.id] = nil
+        saveCategorySettings()
+        deleteCache(playlist.id)
         playlists.removeAll { $0.id == playlist.id }
         states[playlist.id] = nil
         if selectedID == playlist.id { selectedID = playlists.first?.id }
@@ -245,20 +326,26 @@ final class PlaylistStore {
         guard case .loaded(let loaded) = state(of: playlist) else { return }
         let ids = loaded.library.channels.compactMap(\.tvgId)
         let now = Int64(Date.now.timeIntervalSince1970)
-        guideStates[playlist.id] = .loading
+        let hadGuide: Bool = { if case .loaded = guideState(of: playlist) { return true }; return false }()
+        if !hadGuide { guideStates[playlist.id] = .loading }
         do {
-            if let creds = xtreamLogin(for: playlist) {
-                let guide = try await loader.loadXtreamGuide(
+            let guide: Guide
+            if let url = login(for: playlist)?.guideUrl {
+                guide = try await loader.loadGuide(url: url, tvgIds: ids, now: now)
+            } else if let creds = xtreamLogin(for: playlist) {
+                guide = try await loader.loadXtreamGuide(
                     server: creds.server, username: creds.username, password: creds.password, tvgIds: ids, now: now
                 )
-                guideStates[playlist.id] = .loaded(guide)
             } else if let url = loaded.library.epgUrl {
-                guideStates[playlist.id] = .loaded(try await loader.loadGuide(url: url, tvgIds: ids, now: now))
+                guide = try await loader.loadGuide(url: url, tvgIds: ids, now: now)
             } else {
                 guideStates[playlist.id] = .unavailable
+                return
             }
+            guideStates[playlist.id] = .loaded(guide)
+            saveCache(playlist.id, "guide") { try LibraryCache.shared.saveGuide(guide: guide, path: $0) }
         } catch {
-            guideStates[playlist.id] = .failed(Self.message(for: error))
+            if !hadGuide { guideStates[playlist.id] = .failed(Self.message(for: error)) }
         }
     }
 
@@ -271,12 +358,14 @@ final class PlaylistStore {
             vodStates[playlist.id] = .unavailable
             return
         }
-        vodStates[playlist.id] = .loading
+        let hadVod: Bool = { if case .loaded = vodState(of: playlist) { return true }; return false }()
+        if !hadVod { vodStates[playlist.id] = .loading }
         do {
             let vod = try await loader.loadVod(server: creds.server, username: creds.username, password: creds.password)
             vodStates[playlist.id] = .loaded(VodIndex(vod))
+            saveCache(playlist.id, "vod") { try LibraryCache.shared.saveVod(library: vod, path: $0) }
         } catch {
-            vodStates[playlist.id] = .failed(Self.message(for: error))
+            if !hadVod { vodStates[playlist.id] = .failed(Self.message(for: error)) }
         }
     }
 
@@ -314,6 +403,144 @@ final class PlaylistStore {
         guard playlist.kind == .xtream, let login = login(for: playlist),
               let server = login.server, let username = login.username, let password = login.password else { return nil }
         return XtreamCredentials(server: server, username: username, password: password)
+    }
+
+    // MARK: Playlist settings
+
+    func rename(_ playlist: Playlist, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, let index = playlists.firstIndex(where: { $0.id == playlist.id }) else { return }
+        playlists[index].name = trimmed
+        save()
+    }
+
+    /// Server and username of an Xtream playlist, for the Settings form (never the password).
+    func xtreamDetails(_ playlist: Playlist) -> (server: String, username: String)? {
+        guard let login = login(for: playlist), let server = login.server, let username = login.username else { return nil }
+        return (server, username)
+    }
+
+    func guideUrl(_ playlist: Playlist) -> String? { login(for: playlist)?.guideUrl }
+
+    /// Saves a typed guide link (blank = the provider's own) and reloads the guide.
+    func setGuideUrl(_ playlist: Playlist, _ url: String) async {
+        guard var login = login(for: playlist) else { return }
+        let trimmed = url.trimmingCharacters(in: .whitespaces)
+        login.guideUrl = trimmed.isEmpty ? nil : trimmed
+        store(login, for: playlist)
+        guideStates[playlist.id] = nil
+        await loadGuide(playlist)
+    }
+
+    /// New Xtream details: checked by loading the channels first, and only saved if that works
+    /// (like `changeConnection` on the TV). A blank password keeps the old one.
+    func changeXtream(_ playlist: Playlist, server: String, username: String, password: String) async throws {
+        guard let old = login(for: playlist) else { throw PlaylistError(message: "This playlist's login is missing.") }
+        var login = PlaylistLogin(server: server, username: username, password: password.isEmpty ? old.password : password)
+        login.guideUrl = old.guideUrl
+        try await change(playlist, to: login, kind: .xtream)
+    }
+
+    /// A new M3U link (a get.php link is stored as Xtream, as when adding).
+    func changeM3u(_ playlist: Playlist, link: String) async throws {
+        let old = login(for: playlist)
+        var login: PlaylistLogin
+        var kind = Playlist.Kind.m3u
+        if let parts = loader.xtreamLogin(link: link) {
+            login = PlaylistLogin(server: parts.server, username: parts.username, password: parts.password)
+            kind = .xtream
+        } else {
+            login = PlaylistLogin(link: link)
+        }
+        login.guideUrl = old?.guideUrl
+        try await change(playlist, to: login, kind: kind)
+    }
+
+    private func change(_ playlist: Playlist, to login: PlaylistLogin, kind: Playlist.Kind) async throws {
+        let library: LiveLibrary
+        do {
+            library = try await load(login)
+        } catch {
+            throw PlaylistError(message: Self.message(for: error))
+        }
+        store(login, for: playlist)
+        if let index = playlists.firstIndex(where: { $0.id == playlist.id }) {
+            playlists[index].kind = kind
+            playlists[index].host = Self.host(of: login)
+            save()
+        }
+        states[playlist.id] = .loaded(LoadedLibrary(library))
+        saveCache(playlist.id, "live") { try LibraryCache.shared.saveLive(library: library, path: $0) }
+        guideStates[playlist.id] = nil
+        vodStates[playlist.id] = nil
+        let updated = playlists.first { $0.id == playlist.id } ?? playlist
+        Task { await loadGuide(updated) }
+        Task { await loadVod(updated) }
+    }
+
+    private func store(_ login: PlaylistLogin, for playlist: Playlist) {
+        if let data = try? JSONEncoder().encode(login) {
+            Keychain.save(data, for: playlist.id.uuidString)
+        }
+    }
+
+    private static func host(of login: PlaylistLogin) -> String {
+        URL(string: login.server.map { $0.contains("://") ? $0 : "http://\($0)" } ?? login.link ?? "")?.host() ?? "Playlist"
+    }
+
+    // MARK: Categories (hide and rename)
+
+    static func liveCategoryKey(_ name: String) -> String { "l:\(name)" }
+    static func movieCategoryKey(_ id: String) -> String { "m:\(id)" }
+    static func seriesCategoryKey(_ id: String) -> String { "s:\(id)" }
+
+    func isHidden(_ key: String, in playlist: Playlist) -> Bool {
+        hiddenCategories[playlist.id]?.contains(key) == true
+    }
+
+    func setHidden(_ keys: [String], _ hidden: Bool, in playlist: Playlist) {
+        var set = hiddenCategories[playlist.id] ?? []
+        if hidden { set.formUnion(keys) } else { set.subtract(keys) }
+        hiddenCategories[playlist.id] = set
+        saveCategorySettings()
+    }
+
+    /// The user's name for a category, else [fallback] (the tidied provider name).
+    func label(_ key: String, fallback: String, in playlist: Playlist) -> String {
+        categoryLabels[playlist.id]?[key] ?? fallback
+    }
+
+    /// Blank, or the same as the provider's, removes the rename.
+    func rename(_ key: String, to name: String, fallback: String, in playlist: Playlist) {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        var labels = categoryLabels[playlist.id] ?? [:]
+        labels[key] = (trimmed.isEmpty || trimmed == fallback) ? nil : trimmed
+        categoryLabels[playlist.id] = labels
+        saveCategorySettings()
+    }
+
+    /// Live categories to show (hidden ones left out), with the user's names.
+    func visibleLiveCategories(_ loaded: LoadedLibrary, in playlist: Playlist) -> [(key: String, title: String)] {
+        var items = loaded.categories.compactMap { c -> (key: String, title: String)? in
+            let key = Self.liveCategoryKey(c.name)
+            return isHidden(key, in: playlist) ? nil : (c.name, label(key, fallback: c.title, in: playlist))
+        }
+        if loaded.channelsByCategory[LoadedLibrary.otherKey] != nil {
+            items.append((LoadedLibrary.otherKey, "Other channels"))
+        }
+        return items
+    }
+
+    func liveCategoryTitle(_ name: String?, in playlist: Playlist?, loaded: LoadedLibrary) -> String? {
+        guard let name else { return nil }
+        let fallback = loaded.categories.first { $0.name == name }?.title ?? name
+        guard let playlist else { return fallback }
+        return label(Self.liveCategoryKey(name), fallback: fallback, in: playlist)
+    }
+
+    private func saveCategorySettings() {
+        if let data = try? JSONEncoder().encode(hiddenCategories) { UserDefaults.standard.set(data, forKey: hiddenKey) }
+        if let data = try? JSONEncoder().encode(categoryLabels) { UserDefaults.standard.set(data, forKey: labelsKey) }
     }
 
     // MARK: My List
