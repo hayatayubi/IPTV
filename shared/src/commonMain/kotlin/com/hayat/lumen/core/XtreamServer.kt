@@ -30,6 +30,14 @@ class XtreamServer internal constructor(
             extra.forEach { (k, v) -> parameters.append(k, v) }
         }.buildString()
 
+    /** The panel's whole XMLTV guide, `xmltv.php` (holds the login: never log or show it). */
+    internal fun xmltvUrl(): String =
+        URLBuilder(base).apply {
+            appendPathSegments("xmltv.php")
+            parameters.append("username", this@XtreamServer.username)
+            parameters.append("password", this@XtreamServer.password)
+        }.buildString()
+
     /** `/live/<user>/<pass>/<id>.<ext>`. */
     internal fun liveStreamUrl(streamId: String, extension: String): String = mediaUrl("live", streamId, extension)
 

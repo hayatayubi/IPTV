@@ -155,6 +155,7 @@ struct ChannelRows: View {
     @Environment(PlaylistStore.self) private var store
 
     var body: some View {
+        let guide = store.guide(for: store.selected)
         ForEach(Array(channels.enumerated()), id: \.element.key) { index, channel in
             Button {
                 playing = PlayerRoute(channels: channels, index: index)
@@ -166,7 +167,12 @@ struct ChannelRows: View {
                             Text(channel.title).font(LumenFont.headline).lineLimit(1)
                             if let quality = channel.quality { QualityTag(text: quality) }
                         }
-                        if showCategory, let title = categoryTitle(channel) {
+                        if let now = guide?.nowNext(channel)?.now {
+                            Text(now.title).font(LumenFont.inter(14)).foregroundStyle(.secondary).lineLimit(1)
+                            ProgressLine(fraction: now.progress(at: .now), height: 3, track: .gray.opacity(0.35))
+                                .frame(width: 110)
+                                .padding(.top, 2)
+                        } else if showCategory, let title = categoryTitle(channel) {
                             Text(title).font(LumenFont.caption).foregroundStyle(.secondary).lineLimit(1)
                         }
                     }

@@ -24,7 +24,12 @@ struct HomeView: View {
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
-            .navigationDestination(for: HomeRoute.self) { _ in LiveChannelsView() }
+            .navigationDestination(for: HomeRoute.self) { route in
+                switch route {
+                case .allChannels: LiveChannelsView()
+                case .guide: GuideView()
+                }
+            }
         }
         .playerCover($playing)
     }
@@ -53,7 +58,10 @@ struct HomeView: View {
                 .padding(.bottom, 24)
             }
             .scrollIndicators(.hidden)
-            .refreshable { await store.refresh(playlist) }
+            .refreshable {
+                await store.refresh(playlist)
+                await store.loadGuide(playlist)
+            }
             .background(AmbientBackground(tint: hero.map { NameTile.colour(for: $0.title) } ?? LumenColors.ambientCool))
             .sheet(isPresented: $editingFavourites) { FavouritesEditView(playlist: playlist) }
         }
@@ -78,10 +86,15 @@ struct HomeView: View {
                 if let quality = channel.quality { QualityTag(text: quality) }
             }
             .contentTransition(.opacity)
-            if let category = categoryTitle(channel, loaded) {
-                Text(category)
-                    .font(LumenFont.inter(wide ? 20 : 17, .medium))
-                    .foregroundStyle(LumenColors.textSecondary)
+            // Redraws on the minute so the progress line moves.
+            TimelineView(.everyMinute) { context in
+                if let nowNext = store.guide(for: store.selected)?.nowNext(channel, at: context.date) {
+                    HeroGuideLines(nowNext: nowNext, date: context.date, wide: wide)
+                } else if let category = categoryTitle(channel, loaded) {
+                    Text(category)
+                        .font(LumenFont.inter(wide ? 20 : 17, .medium))
+                        .foregroundStyle(LumenColors.textSecondary)
+                }
             }
             HStack(spacing: 12) {
                 Button {
@@ -90,8 +103,8 @@ struct HomeView: View {
                     Label("Watch", systemImage: "play.fill")
                 }
                 .buttonStyle(PrimaryButtonStyle())
-                NavigationLink(value: HomeRoute.allChannels) {
-                    Text("All channels")
+                NavigationLink(value: HomeRoute.guide) {
+                    Label("TV guide", systemImage: "calendar")
                 }
                 .buttonStyle(GlassButtonStyle())
             }
@@ -104,7 +117,23 @@ struct HomeView: View {
 
     private func favouritesGrid(_ favourites: [LiveChannel], hero: LiveChannel, playlist: Playlist) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionTitle(title: "Favourites", hint: "Hold to move or remove")
+            HStack(alignment: .firstTextBaseline) {
+                Text("Favourites").font(LumenFont.title).foregroundStyle(LumenColors.textPrimary)
+                if wide {
+                    Text("Hold a favourite to move or remove it")
+                        .font(LumenFont.caption).foregroundStyle(LumenColors.textSecondary)
+                        .padding(.leading, 10)
+                }
+                Spacer()
+                NavigationLink(value: HomeRoute.allChannels) {
+                    HStack(spacing: 4) {
+                        Text("All channels")
+                        Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold))
+                    }
+                    .font(LumenFont.inter(15, .medium))
+                    .foregroundStyle(LumenColors.textSecondary)
+                }
+            }
             LazyVGrid(
                 columns: Array(repeating: GridItem(.flexible(), spacing: wide ? 24 : 14), count: wide ? 4 : 2),
                 spacing: wide ? 24 : 14
@@ -115,6 +144,7 @@ struct HomeView: View {
                     } label: {
                         ChannelArt(logoUrl: channel.logoUrl, title: channel.title, cornerRadius: 16)
                             .aspectRatio(16 / 9, contentMode: .fit)
+                            .overlay(alignment: .bottom) { TileProgress(channel: channel) }
                             .overlay {
                                 if channel.key == hero.key {
                                     RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -136,6 +166,12 @@ struct HomeView: View {
             }
             .padding(5) // room for the outline round the hero's tile
             .padding(.horizontal, -5)
+            if !wide {
+                Text("Hold a favourite to move or remove it")
+                    .font(LumenFont.caption)
+                    .foregroundStyle(LumenColors.textTertiary)
+                    .frame(maxWidth: .infinity)
+            }
         }
     }
 
@@ -166,7 +202,52 @@ struct HomeView: View {
     }
 }
 
-enum HomeRoute: Hashable { case allChannels }
+enum HomeRoute: Hashable { case allChannels, guide }
+
+/// Under the hero's channel name: "EastEnders  7:30 – 8:00 PM", a progress line, "Next  8:00 PM  Love Island".
+struct HeroGuideLines: View {
+    let nowNext: NowNext
+    let date: Date
+    let wide: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let now = nowNext.now {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(now.title).font(LumenFont.inter(wide ? 22 : 18, .semibold)).foregroundStyle(LumenColors.textPrimary)
+                        .lineLimit(1)
+                    Text(now.timeRange).font(LumenFont.inter(wide ? 18 : 15)).foregroundStyle(LumenColors.textSecondary)
+                        .lineLimit(1)
+                        .layoutPriority(1)
+                }
+                ProgressLine(fraction: now.progress(at: date), height: 4)
+                    .frame(width: wide ? 300 : 170)
+            }
+            if let next = nowNext.next {
+                Text("Next  \(next.startDate.formatted(date: .omitted, time: .shortened))  \(next.title)")
+                    .font(LumenFont.inter(wide ? 18 : 15))
+                    .foregroundStyle(LumenColors.textSecondary)
+                    .lineLimit(1)
+            }
+        }
+    }
+}
+
+/// The current programme's progress along the bottom of a favourite's tile.
+struct TileProgress: View {
+    let channel: LiveChannel
+    @Environment(PlaylistStore.self) private var store
+
+    var body: some View {
+        TimelineView(.everyMinute) { context in
+            if let now = store.guide(for: store.selected)?.nowNext(channel, at: context.date)?.now {
+                ProgressLine(fraction: now.progress(at: context.date), height: 3, track: .white.opacity(0.3))
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 10)
+            }
+        }
+    }
+}
 
 /// Tiles shrink a little while pressed (the touch version of the TV's focus lift).
 struct TileButtonStyle: ButtonStyle {

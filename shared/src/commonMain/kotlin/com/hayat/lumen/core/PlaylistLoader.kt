@@ -11,8 +11,12 @@ import com.hayat.lumen.util.VodNames
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.timeout
 import io.ktor.client.request.get
+import io.ktor.client.request.prepareGet
+import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.bodyAsText
+import io.ktor.utils.io.readAvailable
 import kotlinx.coroutines.CancellationException
 
 /**
@@ -170,6 +174,62 @@ class PlaylistLoader internal constructor(private val http: HttpClient) {
             cast = info?.get("cast").lenient().nonBlank(),
             director = info?.get("director").lenient().nonBlank(),
         )
+    }
+
+    /**
+     * The TV guide for an Xtream login, from the panel's `xmltv.php`. [tvgIds] are the playlist's
+     * channels' tvg-ids; [now] is epoch seconds (programmes from now − 2 h to now + 36 h are kept).
+     */
+    @Throws(Exception::class)
+    suspend fun loadXtreamGuide(server: String, username: String, password: String, tvgIds: List<String>, now: Long): Guide {
+        val login = XtreamServer.of(server, username, password) ?: throw LoadException("This playlist's login is incomplete.")
+        return loadGuide(login.xmltvUrl(), UrlRedaction.hostOnly(login.base.toString()), tvgIds, now)
+    }
+
+    /** The TV guide from an XMLTV link (an M3U's `url-tvg`, or one the user typed). */
+    @Throws(Exception::class)
+    suspend fun loadGuide(url: String, tvgIds: List<String>, now: Long): Guide =
+        loadGuide(url.trim(), UrlRedaction.hostOnly(url.trim()), tvgIds, now)
+
+    private suspend fun loadGuide(url: String, host: String, tvgIds: List<String>, now: Long): Guide {
+        val wanted = tvgIds.mapNotNullTo(HashSet()) { id -> id.trim().lowercase().takeIf { it.isNotEmpty() } }
+        if (wanted.isEmpty()) throw LoadException("These channels have no guide IDs, so there's no TV guide for them.")
+        val reader = XmltvReader(wanted, from = now - 2 * 3600, to = now + 36 * 3600)
+        try {
+            http.prepareGet(url) {
+                // A full guide can be big and slow: give it 10 minutes, not the usual 2.
+                timeout { requestTimeoutMillis = 600_000 }
+            }.execute { response ->
+                if (response.status.value !in 200..299) {
+                    throw LoadException("$host answered with error ${response.status.value} for the TV guide.")
+                }
+                val body = response.bodyAsChannel()
+                val buffer = ByteArray(64 * 1024)
+                var first = true
+                while (true) {
+                    val count = body.readAvailable(buffer, 0, buffer.size)
+                    if (count < 0) break
+                    if (count == 0) continue
+                    if (first) {
+                        first = false
+                        // A .gz guide file (not Content-Encoding, which the networking unzips itself).
+                        if (count >= 2 && buffer[0] == 0x1f.toByte() && buffer[1] == 0x8b.toByte()) {
+                            throw LoadException("The TV guide from $host is a compressed .gz file, which the iPhone app can't read yet.")
+                        }
+                    }
+                    reader.feed(buffer, count)
+                }
+            }
+        } catch (e: LoadException) {
+            throw e
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw LoadException("Couldn't load the TV guide from $host.", e)
+        }
+        val guide = reader.finish()
+        if (reader.seen == 0) throw LoadException("$host sent a TV guide Lumen couldn't read.")
+        return guide
     }
 
     /** True for `get.php` / `player_api.php` links, which carry an Xtream login. */

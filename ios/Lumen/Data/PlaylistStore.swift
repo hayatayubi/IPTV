@@ -65,6 +65,10 @@ final class PlaylistStore {
     private(set) var favouriteKeys: [UUID: [String]] = [:]
     private let favouritesKey = "favourites"
 
+    /// The TV guide per playlist, loaded after the channels (from the panel's xmltv.php, or the
+    /// M3U's url-tvg). Kept in memory only for now: it reloads at each launch.
+    private(set) var guideStates: [UUID: GuideState] = [:]
+
     /// Films and series per playlist (Xtream only), loaded after the channels.
     private(set) var vodStates: [UUID: VodState] = [:]
     /// Where you stopped in films and episodes, per playlist, keyed `m:<id>` / `e:<id>`.
@@ -104,6 +108,10 @@ final class PlaylistStore {
     func loadAll() async {
         for playlist in playlists where isIdle(playlist) {
             await refresh(playlist)
+        }
+        // The guide alongside films and series (each waits on the network, not on the other).
+        for playlist in playlists where guideStates[playlist.id] == nil {
+            Task { await loadGuide(playlist) }
         }
         // Films and series after every playlist's channels, so Live TV is ready first.
         for playlist in playlists where vodStates[playlist.id] == nil {
@@ -164,6 +172,7 @@ final class PlaylistStore {
         states[playlist.id] = .loaded(LoadedLibrary(library))
         selectedID = playlist.id
         save()
+        Task { await loadGuide(playlist) }
         Task { await loadVod(playlist) }
     }
 
@@ -172,6 +181,7 @@ final class PlaylistStore {
         favouriteKeys[playlist.id] = nil
         saveFavourites()
         vodStates[playlist.id] = nil
+        guideStates[playlist.id] = nil
         progress[playlist.id] = nil
         saveProgress()
         myList[playlist.id] = nil
@@ -218,6 +228,37 @@ final class PlaylistStore {
     private func saveFavourites() {
         if let data = try? JSONEncoder().encode(favouriteKeys) {
             UserDefaults.standard.set(data, forKey: favouritesKey)
+        }
+    }
+
+    // MARK: TV guide
+
+    func guideState(of playlist: Playlist) -> GuideState { guideStates[playlist.id] ?? .idle }
+
+    /// The loaded guide, if there is one.
+    func guide(for playlist: Playlist?) -> Guide? {
+        guard let playlist, case .loaded(let guide) = guideState(of: playlist) else { return nil }
+        return guide
+    }
+
+    func loadGuide(_ playlist: Playlist) async {
+        guard case .loaded(let loaded) = state(of: playlist) else { return }
+        let ids = loaded.library.channels.compactMap(\.tvgId)
+        let now = Int64(Date.now.timeIntervalSince1970)
+        guideStates[playlist.id] = .loading
+        do {
+            if let creds = xtreamLogin(for: playlist) {
+                let guide = try await loader.loadXtreamGuide(
+                    server: creds.server, username: creds.username, password: creds.password, tvgIds: ids, now: now
+                )
+                guideStates[playlist.id] = .loaded(guide)
+            } else if let url = loaded.library.epgUrl {
+                guideStates[playlist.id] = .loaded(try await loader.loadGuide(url: url, tvgIds: ids, now: now))
+            } else {
+                guideStates[playlist.id] = .unavailable
+            }
+        } catch {
+            guideStates[playlist.id] = .failed(Self.message(for: error))
         }
     }
 
@@ -367,6 +408,41 @@ final class PlaylistStore {
             return message
         }
         return error.localizedDescription
+    }
+}
+
+enum GuideState {
+    case idle, loading, loaded(Guide), failed(String)
+    /// An M3U playlist without a guide link.
+    case unavailable
+}
+
+extension Guide {
+    func nowNext(_ channel: LiveChannel, at date: Date = .now) -> NowNext? {
+        nowNext(tvgId: channel.tvgId, now: Int64(date.timeIntervalSince1970))
+    }
+}
+
+extension Programme {
+    var startDate: Date { Date(timeIntervalSince1970: TimeInterval(start)) }
+    var stopDate: Date { Date(timeIntervalSince1970: TimeInterval(stop)) }
+
+    func progress(at date: Date) -> Double { progress(now: Int64(date.timeIntervalSince1970)) }
+
+    /// "7:30 – 8:00 PM".
+    var timeRange: String {
+        "\(startDate.formatted(date: .omitted, time: .shortened)) – \(stopDate.formatted(date: .omitted, time: .shortened))"
+    }
+
+    /// "8 min left", "starts in 22 min", "ended".
+    func relative(to date: Date) -> String {
+        let now = Int64(date.timeIntervalSince1970)
+        if now < start {
+            let minutes = Int((start - now + 59) / 60)
+            return minutes >= 60 ? "starts at \(startDate.formatted(date: .omitted, time: .shortened))" : "starts in \(minutes) min"
+        }
+        if now < stop { return "\(Int((stop - now + 59) / 60)) min left" }
+        return "ended"
     }
 }
 

@@ -12,6 +12,7 @@ struct LivePlayerView: View {
     @State private var chromeVisible = true
     @State private var hideTask: Task<Void, Never>?
     @Environment(\.dismiss) private var dismiss
+    @Environment(PlaylistStore.self) private var store
 
     init(channels: [LiveChannel], startIndex: Int) {
         self.channels = channels
@@ -97,9 +98,10 @@ struct LivePlayerView: View {
                                 Text("LIVE").font(LumenFont.inter(13, .semibold)).foregroundStyle(LumenColors.accent)
                             }
                         }
-                        Text("\(index + 1) of \(channels.count)")
+                        Text(programmeLine)
                             .font(LumenFont.inter(15))
                             .foregroundStyle(LumenColors.textSecondary)
+                            .lineLimit(1)
                     }
                 }
                 .foregroundStyle(LumenColors.textPrimary)
@@ -113,6 +115,14 @@ struct LivePlayerView: View {
         }
         .accessibilityAction(named: "Next channel") { zap(by: 1) }
         .accessibilityAction(named: "Previous channel") { zap(by: -1) }
+    }
+
+    /// "EastEnders · 7:30 – 8:00 PM", or "3 of 12" without a guide.
+    private var programmeLine: String {
+        if let now = store.guide(for: store.selected)?.nowNext(channel)?.now {
+            return "\(now.title) · \(now.timeRange)"
+        }
+        return "\(index + 1) of \(channels.count)"
     }
 
     private func zap(by step: Int) {
@@ -151,7 +161,9 @@ final class LivePlayerModel {
     @ObservationIgnored private var observation: NSKeyValueObservation?
     @ObservationIgnored private var statusObservation: NSKeyValueObservation?
 
-    init() {
+    /// [muted]: the iPad guide's preview.
+    init(muted: Bool = false) {
+        player.isMuted = muted
         // Sound plays even with the silent switch on, as in other video apps.
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
