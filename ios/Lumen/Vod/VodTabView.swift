@@ -3,9 +3,8 @@ import SwiftUI
 
 enum VodKind { case movies, series }
 
-/// The Movies and Series tabs, as on the TV: a big hero (backdrop, title, year, genre, plot,
-/// Play and My List) over Continue watching and a row of posters per provider category
-/// (30 each, "See all" for the rest).
+/// The Movies and Series tabs: Continue watching, then a row of posters per provider category
+/// (30 each, "See all" for the rest), as on the TV but without its focus-driven hero.
 struct VodTabView: View {
     let kind: VodKind
     @Environment(PlaylistStore.self) private var store
@@ -37,44 +36,46 @@ struct VodTabView: View {
         case .failed(let error):
             StatusMessage(text: error) { Task { await store.loadVod(playlist) } }
         case .loaded(let index):
-            // The reader gives the height of the status bar (and the iPad's tab bar), so the
-            // hero's backdrop can reach up behind them.
-            GeometryReader { geo in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: wide ? 36 : 28) {
-                        VodHero(kind: kind, title: title, playlist: playlist, index: index, topInset: geo.safeAreaInsets.top)
-                        ContinueWatchingRow(kind: kind, playlist: playlist, index: index)
-                        if kind == .movies {
-                            ForEach(index.movieCategories, id: \.id) { category in
-                                let movies = index.moviesByCategory[category.id] ?? []
-                                PosterRow(category: category, route: VodCategoryRoute(category: category, kind: .movies)) {
-                                    ForEach(movies.prefix(30), id: \.id) { movie in
-                                        NavigationLink(value: movie) {
-                                            Poster(url: movie.posterUrl, title: movie.title, subtitle: movie.year.map { "\($0.intValue)" }, width: wide ? 160 : 116)
-                                        }
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: wide ? 36 : 28) {
+                    // No big backdrop here: on the TV it follows the focused poster, but a touch
+                    // screen has no focus, so it would just be one fixed title (Hayat 2026-10-31).
+                    if !wide {
+                        Text(title)
+                            .font(LumenFont.inter(34, .semibold))
+                            .foregroundStyle(LumenColors.textPrimary)
+                            .lumenGutter(wide)
+                            .padding(.top, 8)
+                    }
+                    ContinueWatchingRow(kind: kind, playlist: playlist, index: index)
+                    if kind == .movies {
+                        ForEach(index.movieCategories, id: \.id) { category in
+                            let movies = index.moviesByCategory[category.id] ?? []
+                            PosterRow(category: category, route: VodCategoryRoute(category: category, kind: .movies)) {
+                                ForEach(movies.prefix(30), id: \.id) { movie in
+                                    NavigationLink(value: movie) {
+                                        Poster(url: movie.posterUrl, title: movie.title, subtitle: movie.year.map { "\($0.intValue)" }, width: wide ? 160 : 116)
                                     }
                                 }
                             }
-                        } else {
-                            ForEach(index.seriesCategories, id: \.id) { category in
-                                let series = index.seriesByCategory[category.id] ?? []
-                                PosterRow(category: category, route: VodCategoryRoute(category: category, kind: .series)) {
-                                    ForEach(series.prefix(30), id: \.id) { show in
-                                        NavigationLink(value: show) {
-                                            Poster(url: show.posterUrl, title: show.title, subtitle: show.year.map { "\($0.intValue)" }, width: wide ? 160 : 116)
-                                        }
+                        }
+                    } else {
+                        ForEach(index.seriesCategories, id: \.id) { category in
+                            let series = index.seriesByCategory[category.id] ?? []
+                            PosterRow(category: category, route: VodCategoryRoute(category: category, kind: .series)) {
+                                ForEach(series.prefix(30), id: \.id) { show in
+                                    NavigationLink(value: show) {
+                                        Poster(url: show.posterUrl, title: show.title, subtitle: show.year.map { "\($0.intValue)" }, width: wide ? 160 : 116)
                                     }
                                 }
                             }
                         }
                     }
-                    .padding(.bottom, 24)
                 }
-                .scrollIndicators(.hidden)
-                // Lets the backdrop draw above the scroll view's top edge.
-                .scrollClipDisabled()
-                .refreshable { await store.loadVod(playlist) }
+                .padding(.bottom, 24)
             }
+            .scrollIndicators(.hidden)
+            .refreshable { await store.loadVod(playlist) }
             .background(AmbientBackground())
         }
     }
@@ -92,149 +93,6 @@ extension View {
 struct VodCategoryRoute: Hashable {
     let category: VodCategory
     let kind: VodKind
-}
-
-/// The big picture at the top of the Movies and Series tabs: the film you were last watching,
-/// else the first of the provider's first category. Play starts it straight away; the heart
-/// adds it to My List; the title opens its page.
-struct VodHero: View {
-    let kind: VodKind
-    let title: String
-    let playlist: Playlist
-    let index: VodIndex
-    var topInset: CGFloat = 0
-    @Environment(PlaylistStore.self) private var store
-    @Environment(\.lumenWide) private var wide
-    @State private var movieInfo: MovieInfo?
-    @State private var playback: VodPlayback?
-
-    var body: some View {
-        let height: CGFloat = wide ? 560 : 500
-        ZStack(alignment: .bottomLeading) {
-            Backdrop(url: backdropUrl, height: height + topInset, wide: wide)
-            VStack(alignment: .leading, spacing: 0) {
-                if !wide {
-                    Text(title)
-                        .font(LumenFont.inter(34, .semibold))
-                        .foregroundStyle(LumenColors.textPrimary)
-                        .shadow(color: .black.opacity(0.4), radius: 8)
-                        .padding(.top, topInset + 8)
-                }
-                Spacer(minLength: 0)
-                if let movie {
-                    details(title: movie.title, quality: movie.quality, facts: movieFacts(movie), plot: movieInfo?.plot, link: movie)
-                    buttons(
-                        play: { playMovie(movie) },
-                        playLabel: moviePlayLabel(movie),
-                        inList: store.isInMyList(.movie, id: movie.id, in: playlist),
-                        toggleList: { store.toggleMyList(movie, in: playlist) }
-                    )
-                } else if let series {
-                    details(title: series.title, quality: nil, facts: seriesFacts(series), plot: series.plot, link: series)
-                    buttons(
-                        play: { Task { playback = await nextUpPlayback(series, store: store, playlist: playlist) } },
-                        playLabel: "Play",
-                        inList: store.isInMyList(.series, id: series.id, in: playlist),
-                        toggleList: { store.toggleMyList(series, in: playlist) }
-                    )
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .lumenGutter(wide)
-            .padding(.bottom, 6)
-        }
-        .frame(height: height + topInset)
-        .task(id: movie?.id) {
-            guard let movie else { return }
-            movieInfo = try? await store.movieInfo(movie, in: playlist)
-        }
-        .fullScreenCover(item: $playback) { VodPlayerView(playback: $0, playlist: playlist) }
-    }
-
-    // MARK: Which title
-
-    private var movie: Movie? {
-        guard kind == .movies else { return nil }
-        if let recent = store.continueWatching(.movie, in: playlist).first,
-           let id = recent.movieId, let movie = index.movieById[id] { return movie }
-        return index.movieCategories.lazy.compactMap { index.moviesByCategory[$0.id]?.first }.first
-    }
-
-    private var series: Series? {
-        guard kind == .series else { return nil }
-        if let recent = store.continueWatching(.series, in: playlist).first,
-           let id = recent.seriesId, let show = index.seriesById[id] { return show }
-        return index.seriesCategories.lazy.compactMap { index.seriesByCategory[$0.id]?.first }.first
-    }
-
-    private var backdropUrl: String? {
-        if let movie { return movieInfo?.backdropUrl ?? movie.posterUrl }
-        return series.flatMap { $0.backdropUrl ?? $0.posterUrl }
-    }
-
-    // MARK: Pieces
-
-    private func details<Link: Hashable>(title: String, quality: String?, facts: String, plot: String?, link: Link) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            NavigationLink(value: link) {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text(title)
-                        .font(LumenFont.inter(wide ? 52 : 34, .semibold))
-                        .foregroundStyle(LumenColors.textPrimary)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.6)
-                        .multilineTextAlignment(.leading)
-                    if let quality { QualityTag(text: quality) }
-                }
-            }
-            .buttonStyle(.plain)
-            if !facts.isEmpty {
-                Text(facts).font(LumenFont.inter(wide ? 18 : 15)).foregroundStyle(LumenColors.textSecondary)
-            }
-            if let plot {
-                Text(plot)
-                    .font(LumenFont.inter(wide ? 18 : 15))
-                    .foregroundStyle(LumenColors.textPrimary.opacity(0.85))
-                    .lineLimit(wide ? 3 : 2)
-                    .frame(maxWidth: 560, alignment: .leading)
-            }
-        }
-    }
-
-    private func buttons(play: @escaping () -> Void, playLabel: String, inList: Bool, toggleList: @escaping () -> Void) -> some View {
-        HStack(spacing: 12) {
-            Button(action: play) { Label(playLabel, systemImage: "play.fill") }
-                .buttonStyle(PrimaryButtonStyle())
-            MyListButton(inList: inList, action: toggleList)
-        }
-        .padding(.top, 14)
-    }
-
-    private func movieFacts(_ movie: Movie) -> String {
-        var parts: [String] = []
-        if let year = movie.year { parts.append("\(year.intValue)") }
-        if let genre = movieInfo?.genre { parts.append(genre) }
-        if let secs = movieInfo?.durationSecs?.doubleValue { parts.append(formatDuration(secs)) }
-        return parts.joined(separator: " · ")
-    }
-
-    private func seriesFacts(_ series: Series) -> String {
-        var parts: [String] = []
-        if let year = series.year { parts.append("\(year.intValue)") }
-        if let genre = series.genre { parts.append(genre) }
-        return parts.joined(separator: " · ")
-    }
-
-    private func moviePlayLabel(_ movie: Movie) -> String {
-        guard let saved = store.progress(WatchProgress.movieKey(movie.id), in: playlist), !saved.finished else { return "Play" }
-        return "Resume"
-    }
-
-    private func playMovie(_ movie: Movie) {
-        let saved = store.progress(WatchProgress.movieKey(movie.id), in: playlist)
-        let start = saved.map { $0.finished ? 0 : $0.position } ?? 0
-        playback = moviePlayback(movie, info: movieInfo, from: start)
-    }
 }
 
 /// The glass heart: filled while the title is in My List.
@@ -372,7 +230,7 @@ struct ContinueWatchingRow: View {
 
     @ViewBuilder
     private func link(for item: WatchProgress) -> some View {
-        let card = WideCard(url: backdrop(for: item), title: item.title, progress: item.fraction, width: wide ? 300 : 230)
+        let card = WideCard(url: backdrop(for: item), title: item.title, progress: item.fraction, width: wide ? 340 : 280)
         if let id = item.movieId, let movie = index.movieById[id] {
             NavigationLink(value: movie) { card }
         } else if let id = item.seriesId, let series = index.seriesById[id] {

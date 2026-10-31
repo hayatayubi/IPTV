@@ -217,3 +217,21 @@ extension EnvironmentValues {
 extension View {
     func lumenGutter(_ wide: Bool) -> some View { padding(.horizontal, wide ? 48 : 20) }
 }
+
+extension View {
+    /// iOS 26 blurs and dims scroll content under the status bar ("scroll edge effect"). With
+    /// Lumen's coloured backgrounds that showed as a band with a hard line under the clock, so
+    /// it's turned off everywhere. (`#if compiler` keeps this building on Xcode 16 too.)
+    @ViewBuilder
+    func hideTopScrollEdgeEffect() -> some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            self.scrollEdgeEffectHidden(true, for: .top)
+        } else {
+            self
+        }
+        #else
+        self
+        #endif
+    }
+}

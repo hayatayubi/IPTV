@@ -35,12 +35,13 @@ struct RootView: View {
                 BottomTabBar(tab: tab, select: select, search: { searching = true })
             }
         }
+        .hideTopScrollEdgeEffect()
         // The keyboard covers the bar instead of pushing it up.
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .environment(\.lumenWide, wide)
         .environment(\.openSearch, { searching = true })
         .sheet(isPresented: $searching) {
-            SearchView().environment(\.lumenWide, wide)
+            SearchView().environment(\.lumenWide, wide).hideTopScrollEdgeEffect()
         }
     }
 

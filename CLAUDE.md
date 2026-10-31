@@ -70,8 +70,9 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
     iPad: the TV's glass pill (search · Live TV · Movies · Series · My List · gear) + clock on top; iPhone: floating glass
     bar at the bottom. Custom tab container in `RootView` (tabs stay alive once opened). Live TV = `HomeView` (hero of the
     last-watched favourite over a wash of its colour, Watch / All channels, 2- or 4-wide favourite tiles) →
-    `LiveChannelsView` (search, category pills, rows white while pressed). Movies/Series: `VodHero` (backdrop behind the
-    status bar, Play / Resume, heart) over Continue watching wide cards and poster rows. My List tab (`MyListView`,
+    `LiveChannelsView` (search, category pills, rows white while pressed). Movies/Series: title, Continue watching wide
+    cards, poster rows (no hero: Hayat 2026-10-31, nothing drives it without focus; film/series pages keep backdrops).
+    Search = round glass button beside the iPhone bar. iOS 26's top scroll edge effect is off (`hideTopScrollEdgeEffect`). My List tab (`MyListView`,
     `PlaylistStore.myList` in UserDefaults, All / Films / Series). `SearchView` = channels + films + series.
     Ratings as plain text (provider rating, age rating). No guide yet, so no now/next or TV guide button.
   - Not in Phase 1: Left sidebar and Right mini guide in the player (Phases 3/6), logos (Phase 4), settings/source editing (Phase 6).
