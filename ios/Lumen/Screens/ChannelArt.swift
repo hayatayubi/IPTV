@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// A channel's picture: the provider's logo when it has one, otherwise a tile in a deep colour
-/// picked from the channel's name with the name in white (the "A" style chosen 2026-10-30;
-/// no bundled brand logos, which the App Store wouldn't allow).
+/// A channel's picture: always a tile in a deep colour picked from the channel's name, with the
+/// name in white (the "A" style chosen 2026-10-30). Provider logos aren't used: Hayat wants every
+/// channel to look consistent, and provider logos come too small or stretched. `logoUrl` is kept
+/// so callers don't change if that's revisited.
 struct ChannelArt: View {
     let logoUrl: String?
     let title: String
@@ -10,24 +11,8 @@ struct ChannelArt: View {
 
     var body: some View {
         GeometryReader { geo in
-            ZStack {
-                if let logoUrl, let url = URL(string: logoUrl) {
-                    AsyncImage(url: url) { phase in
-                        if let image = phase.image {
-                            ZStack {
-                                LumenColors.glassStrong
-                                image.resizable().scaledToFit().padding(geo.size.height * 0.14)
-                            }
-                        } else {
-                            // Loading or failed (dead links are common): the name tile.
-                            NameTile(title: title, height: geo.size.height)
-                        }
-                    }
-                } else {
-                    NameTile(title: title, height: geo.size.height)
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            NameTile(title: title, height: geo.size.height)
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         }
     }
 }
