@@ -52,6 +52,17 @@ struct WatchProgress: Codable, Hashable {
     static func episodeKey(_ id: String) -> String { "e:\(id)" }
 }
 
+/// A film or series saved to My List. Like the TV's `my_list` table: keyed on the provider's id,
+/// with the title and poster kept so the tab can show it before the films have loaded.
+struct MyListItem: Codable, Hashable {
+    enum Kind: String, Codable { case movie, series }
+    let kind: Kind
+    let id: String
+    let title: String
+    let posterUrl: String?
+    let added: Date
+}
+
 /// "42:10" or "1:05:03".
 func formatTime(_ seconds: Double) -> String {
     let total = Int(max(0, seconds))

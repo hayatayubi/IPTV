@@ -1,25 +1,178 @@
 import SwiftUI
 
-/// The four tabs the TV app has in its top bar, as an iOS tab bar (a sidebar on iPad, where
-/// `.sidebarAdaptable` lets people switch).
+/// Lumen's tabs, as on the TV: Live TV · Movies · Series · My List, plus Settings.
+/// One app for iPhone and iPad: a full-width iPad window gets the TV's glass pill at the top
+/// with the clock on the right; iPhone (and narrow iPad split screen) gets a floating glass
+/// bar at the bottom, where the thumb is. The system TabView isn't used because its look can't
+/// be changed to match the TV.
 struct RootView: View {
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @State private var tab: AppTab = .live
+    /// Tabs opened so far. Each stays alive once opened (hidden, not removed), so switching back
+    /// keeps its scroll position and pushed pages, as a real tab bar does.
+    @State private var opened: Set<AppTab> = [.live]
+    @State private var searching = false
+
+    private var wide: Bool { UIDevice.current.userInterfaceIdiom == .pad && sizeClass == .regular }
+
     var body: some View {
-        TabView {
-            Tab("Live TV", systemImage: "tv") {
-                LiveView()
-            }
-            Tab("Movies", systemImage: "film") {
-                VodTabView(kind: .movies)
-            }
-            Tab("Series", systemImage: "play.rectangle.on.rectangle") {
-                VodTabView(kind: .series)
-            }
-            Tab("Settings", systemImage: "gearshape") {
-                SettingsView()
+        ZStack {
+            AmbientBackground()
+            ForEach(AppTab.allCases) { item in
+                if opened.contains(item) {
+                    screen(for: item)
+                        .opacity(tab == item ? 1 : 0)
+                        .allowsHitTesting(tab == item)
+                        .accessibilityHidden(tab != item)
+                }
             }
         }
-        .tabViewStyle(.sidebarAdaptable)
-        .tint(.white)
+        // safeAreaInset makes room for the bar: scroll views inside every tab end above it.
+        .safeAreaInset(edge: wide ? .top : .bottom, spacing: 0) {
+            if wide {
+                TopTabBar(tab: tab, select: select, search: { searching = true })
+            } else {
+                BottomTabBar(tab: tab, select: select)
+            }
+        }
+        // The keyboard covers the bar instead of pushing it up.
+        .ignoresSafeArea(.keyboard, edges: .bottom)
+        .environment(\.lumenWide, wide)
+        .environment(\.openSearch, { searching = true })
+        .sheet(isPresented: $searching) {
+            SearchView().environment(\.lumenWide, wide)
+        }
+    }
+
+    private func select(_ item: AppTab) {
+        opened.insert(item)
+        tab = item
+    }
+
+    @ViewBuilder
+    private func screen(for item: AppTab) -> some View {
+        switch item {
+        case .live: HomeView()
+        case .movies: VodTabView(kind: .movies)
+        case .series: VodTabView(kind: .series)
+        case .myList: MyListView()
+        case .settings: SettingsView()
+        }
+    }
+}
+
+enum AppTab: String, CaseIterable, Identifiable {
+    case live, movies, series, myList, settings
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .live: "Live TV"
+        case .movies: "Movies"
+        case .series: "Series"
+        case .myList: "My List"
+        case .settings: "Settings"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .live: "tv"
+        case .movies: "film"
+        case .series: "play.rectangle.on.rectangle"
+        case .myList: "heart"
+        case .settings: "gearshape"
+        }
+    }
+}
+
+/// iPhone: a floating glass bar; the open tab is a white pill with dark text (the TV's focus look).
+struct BottomTabBar: View {
+    let tab: AppTab
+    let select: (AppTab) -> Void
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(AppTab.allCases) { item in
+                let on = item == tab
+                Button { select(item) } label: {
+                    VStack(spacing: 3) {
+                        Image(systemName: on ? item.icon + ".fill" : item.icon)
+                            .font(.system(size: 17, weight: .medium))
+                            .frame(height: 20)
+                        Text(item.title).font(LumenFont.inter(11, .medium)).lineLimit(1).fixedSize()
+                    }
+                    .foregroundStyle(on ? LumenColors.background : LumenColors.textSecondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(on ? Color.white : Color.clear, in: Capsule())
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(on ? .isSelected : [])
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 7)
+        // A real blur here (cheap on a phone), tinted dark, so rows scrolling under stay readable.
+        .background(.ultraThinMaterial, in: Capsule())
+        .background(Color(hex: 0x282A32).opacity(0.6), in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 1))
+        .padding(.horizontal, 16)
+        .padding(.bottom, 4)
+        .animation(.easeOut(duration: 0.18), value: tab)
+    }
+}
+
+/// iPad: the TV's top bar. One centred glass pill (search · tabs · settings) and the clock.
+struct TopTabBar: View {
+    let tab: AppTab
+    let select: (AppTab) -> Void
+    let search: () -> Void
+
+    var body: some View {
+        ZStack {
+            HStack(spacing: 4) {
+                pillButton(on: false, label: "Search", action: search) {
+                    Image(systemName: "magnifyingglass").font(.system(size: 16, weight: .semibold))
+                }
+                ForEach(AppTab.allCases.filter { $0 != .settings }) { item in
+                    pillButton(on: item == tab, label: item.title, action: { select(item) }) {
+                        Text(item.title).font(LumenFont.inter(17, .medium))
+                    }
+                }
+                pillButton(on: tab == .settings, label: "Settings", action: { select(.settings) }) {
+                    Image(systemName: "gearshape").font(.system(size: 17, weight: .semibold))
+                }
+            }
+            .padding(6)
+            .background(.ultraThinMaterial.opacity(0.6), in: Capsule())
+            .glass(cornerRadius: 999)
+            HStack {
+                Spacer()
+                ClockView()
+            }
+        }
+        .padding(.horizontal, 48)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+        .animation(.easeOut(duration: 0.18), value: tab)
+    }
+
+    private func pillButton<C: View>(on: Bool, label: String, action: @escaping () -> Void, @ViewBuilder content: () -> C) -> some View {
+        Button(action: action) {
+            content()
+                .foregroundStyle(on ? LumenColors.textPrimary : LumenColors.textSecondary)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 9)
+                .background(on ? Color.white.opacity(0.16) : Color.clear, in: Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 }
 
@@ -31,29 +184,47 @@ struct EmptyTab: View {
     @State private var addingPlaylist = false
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                AmbientBackground()
-                VStack(spacing: 16) {
-                    Image(systemName: "sparkles.tv")
-                        .font(.system(size: 56, weight: .light))
-                        .foregroundStyle(LumenColors.textSecondary)
-                    Text("Nothing here yet")
-                        .font(LumenFont.title)
-                        .foregroundStyle(LumenColors.textPrimary)
-                    Text(message)
-                        .font(LumenFont.body)
-                        .foregroundStyle(LumenColors.textSecondary)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: 360)
-                    Button("Add playlist") { addingPlaylist = true }
-                        .buttonStyle(PrimaryButtonStyle())
-                        .padding(.top, 8)
-                }
-                .padding(24)
-            }
-            .navigationTitle(title)
-            .sheet(isPresented: $addingPlaylist) { AddPlaylistView() }
+        VStack(spacing: 16) {
+            Image(systemName: "sparkles.tv")
+                .font(.system(size: 56, weight: .light))
+                .foregroundStyle(LumenColors.textSecondary)
+            Text("Nothing here yet")
+                .font(LumenFont.title)
+                .foregroundStyle(LumenColors.textPrimary)
+            Text(message)
+                .font(LumenFont.body)
+                .foregroundStyle(LumenColors.textSecondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 360)
+            Button("Add playlist") { addingPlaylist = true }
+                .buttonStyle(PrimaryButtonStyle())
+                .padding(.top, 8)
         }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .sheet(isPresented: $addingPlaylist) { AddPlaylistView() }
+    }
+}
+
+/// Loading, failed and "nothing to show" states, centred.
+struct StatusMessage: View {
+    let text: String
+    var loading = false
+    var retry: (() -> Void)?
+
+    var body: some View {
+        VStack(spacing: 16) {
+            if loading { ProgressView().tint(.white) }
+            Text(text)
+                .font(LumenFont.body)
+                .foregroundStyle(LumenColors.textSecondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 420)
+            if let retry {
+                Button("Try again", action: retry).buttonStyle(GlassButtonStyle())
+            }
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

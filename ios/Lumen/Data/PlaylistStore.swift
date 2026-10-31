@@ -70,6 +70,9 @@ final class PlaylistStore {
     /// Where you stopped in films and episodes, per playlist, keyed `m:<id>` / `e:<id>`.
     private(set) var progress: [UUID: [String: WatchProgress]] = [:]
     private let progressKey = "watchProgress"
+    /// Films and series saved to My List, per playlist, newest first (provider ids survive refreshes).
+    private(set) var myList: [UUID: [MyListItem]] = [:]
+    private let myListKey = "myList"
     @ObservationIgnored private var movieInfoCache: [String: MovieInfo] = [:]
     @ObservationIgnored private var seriesInfoCache: [String: SeriesInfo] = [:]
 
@@ -85,6 +88,10 @@ final class PlaylistStore {
         if let data = UserDefaults.standard.data(forKey: progressKey),
            let saved = try? JSONDecoder().decode([UUID: [String: WatchProgress]].self, from: data) {
             progress = saved
+        }
+        if let data = UserDefaults.standard.data(forKey: myListKey),
+           let saved = try? JSONDecoder().decode([UUID: [MyListItem]].self, from: data) {
+            myList = saved
         }
         selectedID = playlists.first?.id
     }
@@ -167,6 +174,8 @@ final class PlaylistStore {
         vodStates[playlist.id] = nil
         progress[playlist.id] = nil
         saveProgress()
+        myList[playlist.id] = nil
+        saveMyList()
         playlists.removeAll { $0.id == playlist.id }
         states[playlist.id] = nil
         if selectedID == playlist.id { selectedID = playlists.first?.id }
@@ -264,6 +273,39 @@ final class PlaylistStore {
         guard playlist.kind == .xtream, let login = login(for: playlist),
               let server = login.server, let username = login.username, let password = login.password else { return nil }
         return XtreamCredentials(server: server, username: username, password: password)
+    }
+
+    // MARK: My List
+
+    func isInMyList(_ kind: MyListItem.Kind, id: String, in playlist: Playlist) -> Bool {
+        myList[playlist.id]?.contains { $0.kind == kind && $0.id == id } == true
+    }
+
+    func toggleMyList(_ movie: Movie, in playlist: Playlist) {
+        toggleMyList(MyListItem(kind: .movie, id: movie.id, title: movie.title, posterUrl: movie.posterUrl, added: .now), in: playlist)
+    }
+
+    func toggleMyList(_ series: Series, in playlist: Playlist) {
+        toggleMyList(MyListItem(kind: .series, id: series.id, title: series.title, posterUrl: series.posterUrl, added: .now), in: playlist)
+    }
+
+    func toggleMyList(_ item: MyListItem, in playlist: Playlist) {
+        var items = myList[playlist.id] ?? []
+        if let index = items.firstIndex(where: { $0.kind == item.kind && $0.id == item.id }) {
+            items.remove(at: index)
+        } else {
+            items.insert(item, at: 0)
+        }
+        myList[playlist.id] = items
+        saveMyList()
+    }
+
+    func myList(in playlist: Playlist) -> [MyListItem] { myList[playlist.id] ?? [] }
+
+    private func saveMyList() {
+        if let data = try? JSONEncoder().encode(myList) {
+            UserDefaults.standard.set(data, forKey: myListKey)
+        }
     }
 
     // MARK: Watch progress

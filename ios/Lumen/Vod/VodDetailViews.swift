@@ -13,24 +13,172 @@ struct VodPlayback: Identifiable {
     var upNext: [VodPlayback] = []
 }
 
-/// The big backdrop at the top of film and series pages, fading into the background.
+func moviePlayback(_ movie: Movie, info: MovieInfo?, from start: Double) -> VodPlayback {
+    VodPlayback(
+        streamUrl: movie.streamUrl,
+        title: movie.title,
+        startAt: start,
+        progress: WatchProgress(
+            key: WatchProgress.movieKey(movie.id), kind: .movie, seriesId: nil, movieId: movie.id, title: movie.title,
+            posterUrl: movie.posterUrl, position: start,
+            duration: info?.durationSecs?.doubleValue ?? 0, updated: .now
+        )
+    )
+}
+
+/// An episode's playback, with the next 20 episodes queued for "Next episode".
+func episodePlayback(_ series: Series, _ episode: Episode, from start: Double, episodes: [Episode]?) -> VodPlayback {
+    let title = "\(series.title) · S\(episode.season) E\(episode.episode)"
+    var playback = VodPlayback(
+        streamUrl: episode.streamUrl,
+        title: episode.title.map { "\(title) · \($0)" } ?? title,
+        startAt: start,
+        progress: WatchProgress(
+            key: WatchProgress.episodeKey(episode.id), kind: .series, seriesId: series.id, movieId: nil,
+            title: title, posterUrl: series.posterUrl, position: start,
+            duration: episode.durationSecs?.doubleValue ?? 0, updated: .now
+        )
+    )
+    if let episodes, let index = episodes.firstIndex(of: episode) {
+        playback.upNext = episodes.dropFirst(index + 1).prefix(20).map { episodePlayback(series, $0, from: 0, episodes: nil) }
+    }
+    return playback
+}
+
+/// Which episode Play starts, like `NextUp.pick` on the TV: the one you were last watching if
+/// unfinished, else the one after it, else the first.
+enum NextUp {
+    struct Pick {
+        let episode: Episode
+        let resume: Double
+        let label: String
+    }
+
+    static func pick(_ episodes: [Episode], progress: (Episode) -> WatchProgress?) -> Pick? {
+        guard let first = episodes.first else { return nil }
+        func resume(_ e: Episode) -> Double {
+            guard let saved = progress(e), !saved.finished else { return 0 }
+            return saved.position
+        }
+        let watched = episodes.compactMap { e in progress(e).map { (e, $0) } }
+        guard let latest = watched.max(by: { $0.1.updated < $1.1.updated }) else {
+            return Pick(episode: first, resume: 0, label: "Play S\(first.season) · E\(first.episode)")
+        }
+        let (last, saved) = latest
+        if !saved.finished {
+            return Pick(episode: last, resume: saved.position, label: "Resume S\(last.season) · E\(last.episode)")
+        }
+        let index = episodes.firstIndex(of: last) ?? 0
+        let next = index + 1 < episodes.count ? episodes[index + 1] : first
+        return Pick(episode: next, resume: resume(next), label: "Play S\(next.season) · E\(next.episode)")
+    }
+}
+
+/// Play on a series from outside its page (the Series tab's hero): loads the episodes first.
+@MainActor
+func nextUpPlayback(_ series: Series, store: PlaylistStore, playlist: Playlist) async -> VodPlayback? {
+    guard let info = try? await store.seriesInfo(series, in: playlist),
+          let pick = NextUp.pick(info.episodes, progress: { store.progress(WatchProgress.episodeKey($0.id), in: playlist) })
+    else { return nil }
+    return episodePlayback(series, pick.episode, from: pick.resume, episodes: info.episodes)
+}
+
+/// The big backdrop at the top of the tabs and the film and series pages, fading into the
+/// background at the bottom (and on iPad also to the left, behind the text, as on the TV).
 struct Backdrop: View {
     let url: String?
+    var height: CGFloat = 400
+    var wide = false
 
     var body: some View {
-        ZStack(alignment: .bottom) {
+        ZStack {
+            Color.clear
             if let url, let parsed = URL(string: url) {
-                AsyncImage(url: parsed) { image in
-                    image.resizable().scaledToFill()
-                } placeholder: {
-                    Color.clear
+                AsyncImage(url: parsed) { phase in
+                    if let image = phase.image {
+                        image.resizable().scaledToFill().transition(.opacity)
+                    }
                 }
             }
-            LinearGradient(colors: [.clear, LumenColors.background], startPoint: .center, endPoint: .bottom)
+            LinearGradient(
+                stops: [.init(color: .clear, location: 0.35), .init(color: LumenColors.background, location: 1)],
+                startPoint: .top, endPoint: .bottom
+            )
+            if wide {
+                LinearGradient(
+                    colors: [LumenColors.background.opacity(0.85), .clear],
+                    startPoint: .leading, endPoint: UnitPoint(x: 0.6, y: 0.5)
+                )
+            }
         }
-        .frame(height: 260)
+        .frame(height: height)
         .frame(maxWidth: .infinity)
         .clipped()
+    }
+}
+
+/// Big numbers with a small label under each ("7.5 / Rating", "PG / Age rating"), as plain text:
+/// the App Store build can't show other companies' logos (the TV's tomato and IMDb box).
+struct RatingsRow: View {
+    let items: [(value: String, label: String)]
+
+    var body: some View {
+        if !items.isEmpty {
+            HStack(alignment: .top, spacing: 36) {
+                ForEach(items.indices, id: \.self) { i in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(items[i].value).font(LumenFont.inter(30, .semibold)).foregroundStyle(LumenColors.textPrimary)
+                        Text(items[i].label).font(LumenFont.caption).foregroundStyle(LumenColors.textSecondary)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The text block under the backdrop, pulled up over its faded bottom.
+private struct DetailBody<Content: View>: View {
+    @Environment(\.lumenWide) private var wide
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16, content: content)
+            .frame(maxWidth: wide ? 760 : .infinity, alignment: .leading)
+            .lumenGutter(wide)
+            .padding(.top, wide ? -140 : -96)
+    }
+}
+
+private struct DetailTitle: View {
+    let title: String
+    let quality: String?
+    let facts: String
+    @Environment(\.lumenWide) private var wide
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(title)
+                    .font(LumenFont.inter(wide ? 52 : 36, .semibold))
+                    .foregroundStyle(LumenColors.textPrimary)
+                    .minimumScaleFactor(0.6)
+                if let quality { QualityTag(text: quality) }
+            }
+            if !facts.isEmpty {
+                Text(facts).font(LumenFont.inter(wide ? 18 : 15)).foregroundStyle(LumenColors.textSecondary)
+            }
+        }
+    }
+}
+
+extension View {
+    /// Pushed pages show the system back button over the backdrop, with no bar behind it.
+    func detailPageChrome() -> some View {
+        self.ignoresSafeArea(edges: .top)
+            .background(AmbientBackground())
+            .toolbar(.visible, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -38,6 +186,7 @@ struct MovieDetailView: View {
     let movie: Movie
     let playlist: Playlist
     @Environment(PlaylistStore.self) private var store
+    @Environment(\.lumenWide) private var wide
     @State private var info: MovieInfo?
     @State private var playback: VodPlayback?
 
@@ -45,32 +194,28 @@ struct MovieDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Backdrop(url: info?.backdropUrl ?? movie.posterUrl)
-                VStack(alignment: .leading, spacing: 14) {
-                    HStack(spacing: 8) {
-                        Text(movie.title).font(LumenFont.largeTitle).foregroundStyle(LumenColors.textPrimary)
-                        if let quality = movie.quality { QualityTag(text: quality) }
-                    }
-                    Text(facts).font(LumenFont.caption).foregroundStyle(LumenColors.textSecondary)
+            VStack(alignment: .leading, spacing: 0) {
+                Backdrop(url: info?.backdropUrl ?? movie.posterUrl, height: wide ? 560 : 420, wide: wide)
+                DetailBody {
+                    DetailTitle(title: movie.title, quality: movie.quality, facts: facts)
                     buttons
+                    RatingsRow(items: ratings).padding(.top, 4)
                     if let plot = info?.plot {
-                        Text(plot).font(LumenFont.body).foregroundStyle(LumenColors.textPrimary.opacity(0.9))
+                        Text(plot).font(LumenFont.inter(wide ? 18 : 16)).foregroundStyle(LumenColors.textPrimary.opacity(0.9))
+                            .lineSpacing(3)
                     }
                     if let cast = info?.cast {
-                        Text("Cast: \(cast)").font(LumenFont.caption).foregroundStyle(LumenColors.textSecondary)
+                        Text("Cast: \(cast)").font(LumenFont.inter(14)).foregroundStyle(LumenColors.textSecondary)
                     }
                     if let director = info?.director {
-                        Text("Director: \(director)").font(LumenFont.caption).foregroundStyle(LumenColors.textSecondary)
+                        Text("Director: \(director)").font(LumenFont.inter(14)).foregroundStyle(LumenColors.textSecondary)
                     }
                 }
-                .padding(.horizontal, 20)
             }
             .padding(.bottom, 30)
         }
-        .ignoresSafeArea(edges: .top)
-        .background(AmbientBackground())
-        .navigationBarTitleDisplayMode(.inline)
+        .scrollIndicators(.hidden)
+        .detailPageChrome()
         .task { info = try? await store.movieInfo(movie, in: playlist) }
         .fullScreenCover(item: $playback) { VodPlayerView(playback: $0, playlist: playlist) }
     }
@@ -80,40 +225,51 @@ struct MovieDetailView: View {
         if let year = movie.year { parts.append("\(year.intValue)") }
         if let genre = info?.genre { parts.append(genre) }
         if let secs = info?.durationSecs?.doubleValue { parts.append(formatDuration(secs)) }
-        if let age = info?.ageRating { parts.append(age) }
-        if let rating = movie.rating?.doubleValue { parts.append(String(format: "★ %.1f", rating)) }
         return parts.joined(separator: " · ")
     }
 
+    private var ratings: [(value: String, label: String)] {
+        var items: [(value: String, label: String)] = []
+        if let rating = movie.rating?.doubleValue, rating > 0 { items.append((String(format: "%.1f", rating), "Rating")) }
+        if let age = info?.ageRating { items.append((age, "Age rating")) }
+        return items
+    }
+
+    /// iPhone: Resume and the heart on one line, Start over full width under them.
+    /// iPad: all on one line.
     @ViewBuilder
     private var buttons: some View {
         let saved = store.progress(key, in: playlist)
-        HStack(spacing: 12) {
-            if let saved, !saved.finished {
-                Button { play(from: saved.position) } label: {
-                    Label("Resume from \(formatTime(saved.position))", systemImage: "play.fill")
-                }
-                .buttonStyle(PrimaryButtonStyle())
-                Button { play(from: 0) } label: { Label("Start over", systemImage: "arrow.counterclockwise") }
-                    .buttonStyle(GlassButtonStyle())
-            } else {
-                Button { play(from: 0) } label: { Label("Play", systemImage: "play.fill") }
-                    .buttonStyle(PrimaryButtonStyle())
+        let resume: Double? = saved.flatMap { $0.finished ? nil : $0.position }
+        let heart = MyListButton(inList: store.isInMyList(.movie, id: movie.id, in: playlist)) {
+            store.toggleMyList(movie, in: playlist)
+        }
+        let playButton = Button { play(from: resume ?? 0) } label: {
+            Label(resume.map { "Resume from \(formatTime($0))" } ?? "Play", systemImage: "play.fill")
+                .frame(maxWidth: wide ? nil : .infinity)
+        }
+        .buttonStyle(PrimaryButtonStyle())
+        let startOver = Button { play(from: 0) } label: {
+            Label("Start over", systemImage: "arrow.counterclockwise").frame(maxWidth: wide ? nil : .infinity)
+        }
+        .buttonStyle(GlassButtonStyle())
+
+        if wide {
+            HStack(spacing: 12) {
+                playButton
+                if resume != nil { startOver }
+                heart
+            }
+        } else {
+            VStack(spacing: 12) {
+                HStack(spacing: 12) { playButton; heart }
+                if resume != nil { startOver }
             }
         }
     }
 
     private func play(from start: Double) {
-        playback = VodPlayback(
-            streamUrl: movie.streamUrl,
-            title: movie.title,
-            startAt: start,
-            progress: WatchProgress(
-                key: key, kind: .movie, seriesId: nil, movieId: movie.id, title: movie.title,
-                posterUrl: movie.posterUrl, position: start,
-                duration: info?.durationSecs?.doubleValue ?? 0, updated: .now
-            )
-        )
+        playback = moviePlayback(movie, info: info, from: start)
     }
 }
 
@@ -121,6 +277,7 @@ struct SeriesDetailView: View {
     let series: Series
     let playlist: Playlist
     @Environment(PlaylistStore.self) private var store
+    @Environment(\.lumenWide) private var wide
     @State private var info: SeriesInfo?
     @State private var error: String?
     @State private var season: Int32 = 1
@@ -128,29 +285,38 @@ struct SeriesDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Backdrop(url: series.backdropUrl ?? series.posterUrl)
-                VStack(alignment: .leading, spacing: 14) {
-                    Text(series.title).font(LumenFont.largeTitle).foregroundStyle(LumenColors.textPrimary)
-                    Text(facts).font(LumenFont.caption).foregroundStyle(LumenColors.textSecondary)
-                    if let pick = nextUp {
-                        Button { play(pick.episode, from: pick.resume) } label: {
-                            Label(pick.label, systemImage: "play.fill")
+            VStack(alignment: .leading, spacing: 0) {
+                Backdrop(url: series.backdropUrl ?? series.posterUrl, height: wide ? 560 : 420, wide: wide)
+                DetailBody {
+                    DetailTitle(title: series.title, quality: nil, facts: facts)
+                    HStack(spacing: 12) {
+                        if let pick = nextUp {
+                            Button { play(pick.episode, from: pick.resume) } label: {
+                                Label(pick.label, systemImage: "play.fill").frame(maxWidth: wide ? nil : .infinity)
+                            }
+                            .buttonStyle(PrimaryButtonStyle())
                         }
-                        .buttonStyle(PrimaryButtonStyle())
+                        MyListButton(inList: store.isInMyList(.series, id: series.id, in: playlist)) {
+                            store.toggleMyList(series, in: playlist)
+                        }
+                    }
+                    if let rating = series.rating?.doubleValue, rating > 0 {
+                        RatingsRow(items: [(String(format: "%.1f", rating), "Rating")]).padding(.top, 4)
                     }
                     if let plot = series.plot {
-                        Text(plot).font(LumenFont.body).foregroundStyle(LumenColors.textPrimary.opacity(0.9))
+                        Text(plot).font(LumenFont.inter(wide ? 18 : 16)).foregroundStyle(LumenColors.textPrimary.opacity(0.9))
+                            .lineSpacing(3)
                     }
-                    episodes
+                    if let cast = info?.cast {
+                        Text("Cast: \(cast)").font(LumenFont.inter(14)).foregroundStyle(LumenColors.textSecondary)
+                    }
+                    episodes.padding(.top, 8)
                 }
-                .padding(.horizontal, 20)
             }
             .padding(.bottom, 30)
         }
-        .ignoresSafeArea(edges: .top)
-        .background(AmbientBackground())
-        .navigationBarTitleDisplayMode(.inline)
+        .scrollIndicators(.hidden)
+        .detailPageChrome()
         .task {
             do {
                 let loaded = try await store.seriesInfo(series, in: playlist)
@@ -167,7 +333,7 @@ struct SeriesDetailView: View {
         var parts: [String] = []
         if let year = series.year { parts.append("\(year.intValue)") }
         if let genre = series.genre { parts.append(genre) }
-        if let rating = series.rating?.doubleValue { parts.append(String(format: "★ %.1f", rating)) }
+        if let count = info?.seasons.count, count > 0 { parts.append(count == 1 ? "1 season" : "\(count) seasons") }
         return parts.joined(separator: " · ")
     }
 
@@ -180,22 +346,22 @@ struct SeriesDetailView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(info.seasons.map(\.int32Value), id: \.self) { number in
-                            Button("Season \(number)") { season = number }
-                                .font(LumenFont.caption)
-                                .foregroundStyle(number == season ? LumenColors.background : LumenColors.textPrimary)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 8)
-                                .background(number == season ? Color.white : LumenColors.glass, in: Capsule())
+                            ChipButton(title: "Season \(number)", selected: number == season, large: wide) { season = number }
                         }
                     }
                 }
             }
-            ForEach(info.episodes.filter { $0.season == season }, id: \.id) { episode in
-                Button { play(episode, from: resumePosition(episode)) } label: { EpisodeRow(episode: episode, progress: progress(episode)) }
-                    .buttonStyle(.plain)
+            VStack(spacing: 6) {
+                ForEach(info.episodes.filter { $0.season == season }, id: \.id) { episode in
+                    Button { play(episode, from: resumePosition(episode)) } label: {
+                        EpisodeRow(episode: episode, progress: progress(episode))
+                    }
+                    .buttonStyle(ChannelRowStyle())
+                    .padding(.horizontal, -12)
+                }
             }
         } else {
-            ProgressView().frame(maxWidth: .infinity)
+            ProgressView().tint(.white).frame(maxWidth: .infinity)
         }
     }
 
@@ -208,81 +374,45 @@ struct SeriesDetailView: View {
         return saved.position
     }
 
-    /// Which episode Play starts, like `NextUp.pick` on the TV: the one you were last watching if
-    /// unfinished, else the one after it, else the first.
-    private var nextUp: (episode: Episode, resume: Double, label: String)? {
-        guard let episodes = info?.episodes, let first = episodes.first else { return nil }
-        let watched = episodes.compactMap { e in progress(e).map { (e, $0) } }
-        guard let latest = watched.max(by: { $0.1.updated < $1.1.updated }) else {
-            return (first, 0, "Play S\(first.season) · E\(first.episode)")
-        }
-        let (last, saved) = latest
-        if !saved.finished {
-            return (last, saved.position, "Resume S\(last.season) · E\(last.episode)")
-        }
-        let index = episodes.firstIndex(of: last) ?? 0
-        let next = index + 1 < episodes.count ? episodes[index + 1] : first
-        return (next, resumePosition(next), "Play S\(next.season) · E\(next.episode)")
+    private var nextUp: NextUp.Pick? {
+        info.flatMap { NextUp.pick($0.episodes, progress: progress) }
     }
 
     private func play(_ episode: Episode, from start: Double) {
-        playback = playbackFor(episode, from: start, withUpNext: true)
-    }
-
-    private func playbackFor(_ episode: Episode, from start: Double, withUpNext: Bool) -> VodPlayback {
-        let title = "\(series.title) · S\(episode.season) E\(episode.episode)"
-        var playback = VodPlayback(
-            streamUrl: episode.streamUrl,
-            title: episode.title.map { "\(title) · \($0)" } ?? title,
-            startAt: start,
-            progress: WatchProgress(
-                key: WatchProgress.episodeKey(episode.id), kind: .series, seriesId: series.id, movieId: nil,
-                title: title, posterUrl: series.posterUrl, position: start,
-                duration: episode.durationSecs?.doubleValue ?? 0, updated: .now
-            )
-        )
-        if withUpNext, let episodes = info?.episodes, let index = episodes.firstIndex(of: episode) {
-            playback.upNext = episodes.dropFirst(index + 1).prefix(20).map { playbackFor($0, from: 0, withUpNext: false) }
-        }
-        return playback
+        playback = episodePlayback(series, episode, from: start, episodes: info?.episodes)
     }
 }
 
 struct EpisodeRow: View {
     let episode: Episode
     let progress: WatchProgress?
+    @Environment(\.lumenWide) private var wide
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
             ZStack(alignment: .bottom) {
                 PosterImage(url: episode.imageUrl, title: "E\(episode.episode)")
                 if let progress {
-                    GeometryReader { geo in
-                        Capsule().fill(.white.opacity(0.3)).overlay(alignment: .leading) {
-                            Capsule().fill(.white).frame(width: geo.size.width * progress.fraction)
-                        }
-                    }
-                    .frame(height: 3)
-                    .padding(6)
+                    ProgressLine(fraction: progress.fraction, height: 3, track: .white.opacity(0.3)).padding(6)
                 }
             }
-            .frame(width: 140, height: 79)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .frame(width: wide ? 200 : 140, height: wide ? 112 : 79)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             VStack(alignment: .leading, spacing: 4) {
                 Text("\(episode.episode). \(episode.title ?? "Episode \(episode.episode)")")
                     .font(LumenFont.headline)
-                    .foregroundStyle(LumenColors.textPrimary)
                     .lineLimit(2)
+                    .multilineTextAlignment(.leading)
                 if let secs = episode.durationSecs?.doubleValue {
-                    Text(formatDuration(secs)).font(LumenFont.caption).foregroundStyle(LumenColors.textSecondary)
+                    Text(formatDuration(secs)).font(LumenFont.caption).foregroundStyle(.secondary)
                 }
                 if let plot = episode.plot {
-                    Text(plot).font(LumenFont.caption).foregroundStyle(LumenColors.textSecondary).lineLimit(2)
+                    Text(plot).font(LumenFont.caption).foregroundStyle(.secondary).lineLimit(2)
+                        .multilineTextAlignment(.leading)
                 }
             }
             Spacer(minLength: 0)
         }
-        .contentShape(Rectangle())
     }
 }
 

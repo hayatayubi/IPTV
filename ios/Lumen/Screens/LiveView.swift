@@ -1,138 +1,157 @@
 import Shared
 import SwiftUI
 
-/// Live TV: the playlist's categories, then a category's channels. Tapping a channel plays it
-/// full screen, and swiping up/down there zaps through that category.
-struct LiveView: View {
+/// "All channels": a search field, the playlist's categories as pills, and the chosen category's
+/// channels as rows. Tap a row to watch (swiping up/down in the player zaps through the same
+/// list); hold it, or swipe it right, to add or remove a favourite.
+struct LiveChannelsView: View {
     @Environment(PlaylistStore.self) private var store
+    @Environment(\.lumenWide) private var wide
+    @State private var category: String?
     @State private var search = ""
     @State private var playing: PlayerRoute?
-    @State private var editingFavourites = false
 
     var body: some View {
-        if let playlist = store.selected {
-            NavigationStack {
-                content(for: playlist)
-                    .scrollContentBackground(.hidden)
-                    .background(AmbientBackground())
-                    .navigationTitle("Live TV")
-                    .toolbar { playlistMenu }
-                    .navigationDestination(for: CategoryRoute.self) { route in
-                        ChannelListView(title: route.title, channels: route.channels)
-                    }
+        Group {
+            if let playlist = store.selected, case .loaded(let loaded) = store.state(of: playlist) {
+                content(loaded)
+            } else {
+                StatusMessage(text: "Loading channels…", loading: true)
             }
-        } else {
-            EmptyTab(title: "Live TV", message: "Add your playlist or Xtream login to see your channels.")
         }
+        .background(AmbientBackground())
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .playerCover($playing)
+    }
+
+    private func content(_ loaded: LoadedLibrary) -> some View {
+        let categories = Self.categories(loaded)
+        let chosen = category ?? categories.first?.key
+        let channels: [LiveChannel] = search.isEmpty
+            ? loaded.channelsByCategory[chosen ?? ""] ?? []
+            : Array(loaded.library.channels.filter { $0.title.localizedCaseInsensitiveContains(search) }.prefix(300))
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("All channels")
+                    .font(LumenFont.inter(wide ? 44 : 34, .semibold))
+                    .foregroundStyle(LumenColors.textPrimary)
+                Spacer()
+                playlistMenu
+            }
+            .lumenGutter(wide)
+            SearchField(text: $search, prompt: "Search channels")
+                .lumenGutter(wide)
+            if search.isEmpty {
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(categories, id: \.key) { item in
+                                ChipButton(title: item.title, selected: item.key == chosen, large: wide) {
+                                    category = item.key
+                                }
+                                .id(item.key)
+                            }
+                        }
+                        .lumenGutter(wide)
+                    }
+                    .onAppear { if let chosen { proxy.scrollTo(chosen, anchor: .center) } }
+                }
+            }
+            List {
+                ChannelRows(channels: channels, playing: $playing, showCategory: !search.isEmpty, loaded: loaded)
+                if channels.isEmpty {
+                    Text(search.isEmpty ? "No channels in this category." : "No channels match.")
+                        .font(LumenFont.body)
+                        .foregroundStyle(LumenColors.textSecondary)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .contentMargins(.horizontal, wide ? 36 : 8, for: .scrollContent)
+            .id(chosen) // a new category starts at the top
+        }
+    }
+
+    /// Categories in the provider's order, then the channels without one.
+    static func categories(_ loaded: LoadedLibrary) -> [CategoryItem] {
+        var items = loaded.categories.map { CategoryItem(key: $0.name, title: $0.title) }
+        if loaded.channelsByCategory[LoadedLibrary.otherKey] != nil {
+            items.append(CategoryItem(key: LoadedLibrary.otherKey, title: "Other channels"))
+        }
+        return items
+    }
+
+    struct CategoryItem: Hashable {
+        let key: String
+        let title: String
     }
 
     @ViewBuilder
-    private func content(for playlist: Playlist) -> some View {
-        switch store.state(of: playlist) {
-        case .idle, .loading:
-            ProgressView("Loading channels…")
-                .font(LumenFont.body)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        case .failed(let message):
-            VStack(spacing: 16) {
-                Text(message)
-                    .font(LumenFont.body)
-                    .foregroundStyle(LumenColors.textSecondary)
-                    .multilineTextAlignment(.center)
-                Button("Try again") { Task { await store.refresh(playlist) } }
-                    .buttonStyle(GlassButtonStyle())
-            }
-            .padding(24)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        case .loaded(let loaded):
-            List {
-                if search.isEmpty {
-                    let favourites = store.favourites(in: playlist)
-                    if !favourites.isEmpty {
-                        Section {
-                            FavouritesRow(channels: favourites, playing: $playing)
-                        } header: {
-                            HStack {
-                                Text("Favourites")
-                                Spacer()
-                                Button("Edit") { editingFavourites = true }
-                                    .textCase(nil)
-                            }
-                        }
-                    }
-                    ForEach(loaded.categories, id: \.name) { category in
-                        NavigationLink(value: CategoryRoute(
-                            title: category.title,
-                            channels: loaded.channelsByCategory[category.name] ?? []
-                        )) {
-                            LabeledContent(category.title, value: "\(category.channelCount)")
-                        }
-                    }
-                    if let others = loaded.channelsByCategory[LoadedLibrary.otherKey] {
-                        NavigationLink(value: CategoryRoute(title: "Other channels", channels: others)) {
-                            LabeledContent("Other channels", value: "\(others.count)")
-                        }
-                    }
-                } else {
-                    let matches = Array(loaded.library.channels.filter {
-                        $0.title.localizedCaseInsensitiveContains(search)
-                    }.prefix(200))
-                    ChannelRows(channels: matches, playing: $playing)
+    private var playlistMenu: some View {
+        // Only worth showing with more than one playlist.
+        if store.playlists.count > 1 {
+            Menu {
+                Picker("Playlist", selection: Binding(
+                    get: { store.selected?.id },
+                    set: { store.selectedID = $0; category = nil }
+                )) {
+                    ForEach(store.playlists) { Text($0.name).tag(Optional($0.id)) }
                 }
-            }
-            .font(LumenFont.body)
-            .playerCover($playing)
-            .sheet(isPresented: $editingFavourites) { FavouritesEditView(playlist: playlist) }
-            .searchable(text: $search, prompt: "Search channels")
-            .refreshable { await store.refresh(playlist) }
-        }
-    }
-
-    private var playlistMenu: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) {
-            // Only worth showing with more than one playlist.
-            if store.playlists.count > 1 {
-                Menu {
-                    Picker("Playlist", selection: Binding(
-                        get: { store.selected?.id },
-                        set: { store.selectedID = $0 }
-                    )) {
-                        ForEach(store.playlists) { Text($0.name).tag(Optional($0.id)) }
-                    }
-                } label: {
-                    Label(store.selected?.name ?? "Playlist", systemImage: "list.bullet")
-                }
+            } label: {
+                Label(store.selected?.name ?? "Playlist", systemImage: "chevron.up.chevron.down")
+                    .font(LumenFont.caption)
+                    .foregroundStyle(LumenColors.textPrimary)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .glass(cornerRadius: 999)
             }
         }
     }
 }
 
-/// Navigation value for a category's channel list. (NavigationLink(value:) needs Hashable;
-/// Kotlin objects are compared by identity, which is fine here.)
-struct CategoryRoute: Hashable {
-    let title: String
-    let channels: [LiveChannel]
-}
-
-struct ChannelListView: View {
-    let title: String
-    let channels: [LiveChannel]
-    @State private var playing: PlayerRoute?
+/// A glass search field (the system one can't be styled to match).
+struct SearchField: View {
+    @Binding var text: String
+    let prompt: String
+    var autofocus = false
+    @FocusState private var focused: Bool
 
     var body: some View {
-        List { ChannelRows(channels: channels, playing: $playing) }
-            .font(LumenFont.body)
-            .playerCover($playing)
-            .scrollContentBackground(.hidden)
-            .background(AmbientBackground())
-            .navigationTitle(title)
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass").foregroundStyle(LumenColors.textSecondary)
+            TextField(prompt, text: $text, prompt: Text(prompt).foregroundStyle(LumenColors.textTertiary))
+                .font(LumenFont.body)
+                .foregroundStyle(LumenColors.textPrimary)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .focused($focused)
+            if !text.isEmpty {
+                Button { text = "" } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(LumenColors.textSecondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear")
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .glass(cornerRadius: 999)
+        .onAppear { if autofocus { focused = true } }
     }
 }
 
-/// Channel rows; tapping one plays it full screen, zapping within [channels].
+/// Channel rows; tapping one plays it full screen, zapping within [channels]. A pressed row
+/// turns white with dark text, like a focused row on the TV.
 struct ChannelRows: View {
     let channels: [LiveChannel]
     @Binding var playing: PlayerRoute?
+    var showCategory = false
+    var loaded: LoadedLibrary?
     @Environment(PlaylistStore.self) private var store
 
     var body: some View {
@@ -141,14 +160,17 @@ struct ChannelRows: View {
                 playing = PlayerRoute(channels: channels, index: index)
             } label: {
                 HStack(spacing: 14) {
-                    ChannelLogo(url: channel.logoUrl, title: channel.title)
-                    Text(channel.title)
-                        .foregroundStyle(LumenColors.textPrimary)
-                        .lineLimit(1)
-                    Spacer()
-                    if let quality = channel.quality {
-                        QualityTag(text: quality)
+                    ChannelLogo(url: channel.logoUrl, title: channel.title, size: 40)
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 8) {
+                            Text(channel.title).font(LumenFont.headline).lineLimit(1)
+                            if let quality = channel.quality { QualityTag(text: quality) }
+                        }
+                        if showCategory, let title = categoryTitle(channel) {
+                            Text(title).font(LumenFont.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
                     }
+                    Spacer(minLength: 8)
                     if isFavourite(channel) {
                         Image(systemName: "star.fill")
                             .foregroundStyle(LumenColors.accent)
@@ -156,12 +178,36 @@ struct ChannelRows: View {
                     }
                 }
             }
+            .buttonStyle(ChannelRowStyle())
+            .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
             // Hold a channel (or swipe right) to add or remove it from favourites.
             .contextMenu { favouriteButton(channel) }
             .swipeActions(edge: .leading) {
                 favouriteButton(channel).tint(LumenColors.accent)
             }
         }
+    }
+
+    private func categoryTitle(_ channel: LiveChannel) -> String? {
+        guard let name = channel.categoryName else { return nil }
+        return loaded?.categories.first { $0.name == name }?.title ?? name
+    }
+}
+
+/// White with dark text while pressed (the TV's focused row); clear otherwise.
+struct ChannelRowStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(configuration.isPressed ? LumenColors.background : LumenColors.textPrimary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(
+                configuration.isPressed ? Color.white : Color.clear,
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 
@@ -183,47 +229,6 @@ private extension ChannelRows {
                 }
             }
         }
-    }
-}
-
-/// Favourites as big 16:9 cards in a row you scroll sideways. Tap plays (zapping through
-/// favourites); hold for Remove.
-struct FavouritesRow: View {
-    let channels: [LiveChannel]
-    @Binding var playing: PlayerRoute?
-    @Environment(PlaylistStore.self) private var store
-
-    var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(alignment: .top, spacing: 14) {
-                ForEach(Array(channels.enumerated()), id: \.element.key) { index, channel in
-                    Button {
-                        playing = PlayerRoute(channels: channels, index: index)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 6) {
-                            ChannelArt(logoUrl: channel.logoUrl, title: channel.title, cornerRadius: 14)
-                                .frame(width: 200, height: 112.5)
-                            Text(channel.title)
-                                .font(LumenFont.caption)
-                                .foregroundStyle(LumenColors.textSecondary)
-                                .lineLimit(1)
-                                .frame(width: 200, alignment: .leading)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .contextMenu {
-                        if let playlist = store.selected {
-                            Button("Remove from favourites", systemImage: "star.slash", role: .destructive) {
-                                store.toggleFavourite(channel, in: playlist)
-                            }
-                        }
-                    }
-                }
-            }
-            .padding(.vertical, 4)
-        }
-        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-        .listRowBackground(Color.clear)
     }
 }
 

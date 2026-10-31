@@ -65,7 +65,15 @@ and comment where Compose differs from SwiftUI in a non-obvious way.
     for Xtream playlists. `ios/Lumen/Vod/`: tabs with Continue watching + category rows (30, See all grid), film and
     series pages, `VodPlayerView` on VLCKit (SPM package `tylerjonesio/vlckit-spm` 3.6, LGPL; AVPlayer can't do mkv/DTS),
     polled every 0.5 s. Progress in UserDefaults (`WatchProgress`, no stream URLs: they hold the password), saved every
-    15 s and on leaving, 95% = finished, under 30 s not kept. No My List or VOD search yet.
+    15 s and on leaving, 95% = finished, under 30 s not kept.
+  - TV look (Hayat approved mockups 2026-10-31; not yet run): one app, layout by `lumenWide` (iPad + regular width).
+    iPad: the TV's glass pill (search · Live TV · Movies · Series · My List · gear) + clock on top; iPhone: floating glass
+    bar at the bottom. Custom tab container in `RootView` (tabs stay alive once opened). Live TV = `HomeView` (hero of the
+    last-watched favourite over a wash of its colour, Watch / All channels, 2- or 4-wide favourite tiles) →
+    `LiveChannelsView` (search, category pills, rows white while pressed). Movies/Series: `VodHero` (backdrop behind the
+    status bar, Play / Resume, heart) over Continue watching wide cards and poster rows. My List tab (`MyListView`,
+    `PlaylistStore.myList` in UserDefaults, All / Films / Series). `SearchView` = channels + films + series.
+    Ratings as plain text (provider rating, age rating). No guide yet, so no now/next or TV guide button.
   - Not in Phase 1: Left sidebar and Right mini guide in the player (Phases 3/6), logos (Phase 4), settings/source editing (Phase 6).
 
 ## Decisions

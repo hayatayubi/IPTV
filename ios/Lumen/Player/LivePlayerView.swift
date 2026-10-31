@@ -1,4 +1,5 @@
 import AVFoundation
+import AVKit
 import Shared
 import SwiftUI
 
@@ -60,41 +61,58 @@ struct LivePlayerView: View {
         }
     }
 
+    /// Like the TV's info overlay: close and AirPlay at the top; channel, LIVE and the hint over a
+    /// dark fade at the bottom.
     private var chrome: some View {
-        VStack {
-            HStack(spacing: 14) {
-                ChannelLogo(url: channel.logoUrl, title: channel.title, size: 40)
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 8) {
-                        Text(channel.title).font(LumenFont.title).lineLimit(1)
-                        if let quality = channel.quality { QualityTag(text: quality) }
-                    }
-                    Text("\(index + 1) of \(channels.count) · swipe up or down to change")
-                        .font(LumenFont.caption)
-                        .foregroundStyle(LumenColors.textSecondary)
+        ZStack {
+            LinearGradient(
+                stops: [
+                    .init(color: .black.opacity(0.55), location: 0),
+                    .init(color: .clear, location: 0.25),
+                    .init(color: .clear, location: 0.55),
+                    .init(color: .black.opacity(0.75), location: 1),
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    CircleGlassButton(systemImage: "xmark", label: "Close", size: 44, fill: .black.opacity(0.35)) { dismiss() }
+                    Spacer()
+                    AirPlayButton()
+                        .frame(width: 44, height: 44)
+                        .glass(cornerRadius: 22, fill: .black.opacity(0.35))
                 }
                 Spacer()
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark").font(.system(size: 17, weight: .semibold))
-                        .frame(width: 44, height: 44)
+                HStack(spacing: 14) {
+                    ChannelLogo(url: channel.logoUrl, title: channel.title, size: 46)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 10) {
+                            Text(channel.title).font(LumenFont.inter(24, .semibold)).lineLimit(1)
+                            if let quality = channel.quality { QualityTag(text: quality) }
+                            HStack(spacing: 5) {
+                                Circle().fill(LumenColors.accent).frame(width: 8, height: 8)
+                                Text("LIVE").font(LumenFont.inter(13, .semibold)).foregroundStyle(LumenColors.accent)
+                            }
+                        }
+                        Text("\(index + 1) of \(channels.count)")
+                            .font(LumenFont.inter(15))
+                            .foregroundStyle(LumenColors.textSecondary)
+                    }
                 }
-                .glass(cornerRadius: 22, fill: Color.black.opacity(0.4))
-                .accessibilityLabel("Close")
+                .foregroundStyle(LumenColors.textPrimary)
+                Text(channels.count > 1 ? "Swipe up or down to change channel" : "Tap to hide")
+                    .font(LumenFont.inter(14))
+                    .foregroundStyle(LumenColors.textSecondary)
+                    .padding(.top, 14)
             }
-            .foregroundStyle(LumenColors.textPrimary)
-            .padding(16)
-            .glass(fill: Color.black.opacity(0.55))
-            .padding(.horizontal, 16)
-
-            Spacer()
-
-            HStack(spacing: 16) {
-                Button { zap(by: -1) } label: { Label("Previous", systemImage: "chevron.up") }
-                Button { zap(by: 1) } label: { Label("Next", systemImage: "chevron.down") }
-            }
-            .buttonStyle(GlassButtonStyle())
-            .padding(.bottom, 24)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 16)
         }
+        .accessibilityAction(named: "Next channel") { zap(by: 1) }
+        .accessibilityAction(named: "Previous channel") { zap(by: -1) }
     }
 
     private func zap(by step: Int) {
@@ -179,6 +197,19 @@ final class LivePlayerModel {
         player.pause()
         player.replaceCurrentItem(with: nil)
     }
+}
+
+/// Apple's AirPlay button (pick a TV or speaker), white to match the overlay.
+struct AirPlayButton: UIViewRepresentable {
+    func makeUIView(context: Context) -> AVRoutePickerView {
+        let view = AVRoutePickerView()
+        view.tintColor = .white
+        view.activeTintColor = UIColor(red: 10 / 255, green: 132 / 255, blue: 1, alpha: 1)
+        view.prioritizesVideoDevices = true
+        return view
+    }
+
+    func updateUIView(_ view: AVRoutePickerView, context: Context) {}
 }
 
 /// Shows an AVPlayer through an AVPlayerLayer. (SwiftUI's VideoPlayer brings Apple's own
